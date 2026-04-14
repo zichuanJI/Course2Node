@@ -1,56 +1,117 @@
 export type SessionStatus =
-  | "pending" | "ingesting" | "extracting" | "aligning"
-  | "retrieving" | "synthesizing" | "review" | "done" | "failed";
+  | "draft"
+  | "uploaded"
+  | "ingesting"
+  | "graph_ready"
+  | "notes_ready"
+  | "failed";
 
-export interface LectureSession {
-  id: string;
+export type SourceKind = "pdf" | "audio";
+
+export interface SourceFile {
+  source_id: string;
+  kind: SourceKind;
+  filename: string;
+  content_type: string;
+  storage_path: string;
+  size_bytes: number;
+  uploaded_at: string;
+  ingested: boolean;
+  ingest_artifact_path?: string | null;
+}
+
+export interface SessionStats {
+  document_count: number;
+  audio_count: number;
+  chunk_count: number;
+  concept_count: number;
+  relation_count: number;
+  cluster_count: number;
+}
+
+export interface CourseSession {
+  session_id: string;
   course_title: string;
   lecture_title: string;
-  language: string;
   status: SessionStatus;
+  source_files: SourceFile[];
+  stats: SessionStats;
   created_at: string;
-  updated_at?: string;
-  error_message?: string;
+  updated_at: string;
+  error_message?: string | null;
 }
 
-export type NoteBlockKind = "summary" | "section" | "supplement" | "term" | "warning" | "question";
-export type GroundingLevel = "lecture" | "supplemental" | "mixed";
+export interface SearchConceptHit {
+  concept_id: string;
+  name: string;
+  canonical_name: string;
+  score: number;
+  source_count: number;
+  evidence_chunk_ids: string[];
+}
 
-export interface EvidenceRef {
-  source_type: "audio" | "slides" | "context_docs" | "web" | "human_edit";
+export interface SearchChunkHit {
+  chunk_id: string;
+  source_id: string;
+  source_type: SourceKind;
+  score: number;
+  text: string;
+  page_start?: number | null;
+  page_end?: number | null;
+  time_start?: number | null;
+  time_end?: number | null;
+}
+
+export interface SearchResponse {
+  session_id: string;
+  query: string;
+  concepts: SearchConceptHit[];
+  chunks: SearchChunkHit[];
+}
+
+export interface SubgraphNode {
+  id: string;
+  label: string;
+  node_type: "concept" | "topic_cluster";
+  metadata: Record<string, unknown>;
+}
+
+export interface SubgraphEdge {
+  source: string;
+  target: string;
+  edge_type: string;
+  properties: Record<string, unknown>;
+}
+
+export interface SubgraphResponse {
+  session_id: string;
+  center_concept_id: string;
+  nodes: SubgraphNode[];
+  edges: SubgraphEdge[];
+}
+
+export interface NoteReference {
+  source_type: SourceKind;
   source_id: string;
   locator: string;
-  url?: string;
-}
-
-export interface NoteBlock {
-  id: string;
-  kind: NoteBlockKind;
-  title: string;
-  content_md: string;
-  provenance: EvidenceRef[];
-  citations: EvidenceRef[];
-  grounding_level: GroundingLevel;
+  snippet: string;
 }
 
 export interface NoteSection {
   section_id: string;
   title: string;
-  blocks: NoteBlock[];
-  slide_range?: [number, number];
+  content_md: string;
+  concept_ids: string[];
+  references: NoteReference[];
 }
 
 export interface NoteDocument {
-  metadata: {
-    session_id: string;
-    course_title: string;
-    lecture_title: string;
-    language: string;
-    generated_at: string;
-  };
-  one_paragraph_summary: string;
+  note_id: string;
+  session_id: string;
+  title: string;
+  topic: string;
+  summary: string;
   sections: NoteSection[];
-  supplemental_context: NoteBlock[];
-  key_terms: NoteBlock[];
-  open_questions: NoteBlock[];
+  generated_at: string;
 }
+

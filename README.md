@@ -1,131 +1,93 @@
-# Course2Note
+# Course2Node
 
-将一节课的音频 + 幻灯片，自动生成结构化讲义笔记的 Research MVP。
+把课程 `PDF + 音频` 转成“每个节点都是知识点”的图谱式课程理解系统。
 
-## 核心流程
+## V1 定位
 
+- 主图中的每个节点都是 `知识点`
+- PDF 页码和音频时间戳不做主图节点，只作为知识点的 `evidence_refs`
+- 主图边只保留知识点之间的关系：
+  - `RELATES_TO`
+  - `CO_OCCURS_WITH`
+  - `CONTAINS`（主题簇到知识点）
+- 当前实现默认使用本地 JSON artifact 持久化，方便课程项目直接启动和演示
+
+## 数据流
+
+```text
+上传 PDF / 音频
+  -> ingest/pdf + ingest/audio
+  -> 统一证据块（chunk）抽取
+  -> 知识点抽取 / 共现统计 / 规则关系抽取
+  -> 构建知识点图谱
+  -> 搜索知识点 / 查看子图
+  -> 生成结构化笔记
 ```
-上传音频 / PPTX / PDF
-    ↓
-Extract   ASR 转录 + 幻灯片解析
-    ↓
-Align     转录文本与幻灯片单调对齐
-    ↓
-Retrieve  Minimax Agent 联网补充知识点（可选）
-    ↓
-Synthesize  旗舰 LLM 生成结构化 NoteDocument JSON
-    ↓
-Review    编辑 / Accept / Reject / 导出 MD · TeX · TXT
-```
 
-## 技术栈
+## 接口
 
-| 层 | 技术 |
-|---|---|
-| Backend | Python 3.12 · FastAPI · SQLAlchemy (async) · Alembic |
-| 任务队列 | Celery + Redis |
-| 数据库 | PostgreSQL |
-| 核心 LLM | Claude Opus 4 / Sonnet 4.6 · Gemini 2.5 Pro（可切换）|
-| 检索 Agent | Minimax（轻量 tool-use 联网搜索）|
-| 向量嵌入 | OpenAI text-embedding-3 |
-| 搜索后端 | Tavily |
-| Frontend | React 18 · Vite · TypeScript |
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/upload/pdf` | 上传 PDF |
+| POST | `/upload/audio` | 上传音频 |
+| POST | `/ingest/pdf` | 解析 PDF，生成证据块 |
+| POST | `/ingest/audio` | 转写音频，生成证据块 |
+| POST | `/build_graph` | 构建知识点主图 |
+| POST | `/search` | 搜索知识点与证据片段 |
+| GET | `/graph/subgraph` | 查看某个知识点的局部关系图 |
+| POST | `/generate_notes` | 根据主题生成结构化笔记 |
+| GET | `/notes/{session_id}` | 获取生成后的笔记 JSON |
+| GET | `/export/{session_id}/{fmt}` | 导出 `markdown/txt/tex` |
 
-## 目录结构
+## 后端结构
 
-```
-Course2Note/
-├── backend/
-│   └── app/
-│       ├── core/          # 规范类型 (types.py) + Provider 抽象接口
-│       ├── api/routes/    # upload · sessions · export · review
-│       ├── pipeline/      # 6 个 stage：ingest extract align retrieve synthesize export_renderer
-│       ├── providers/     # LLM / Search / Embed / Minimax Agent 适配器
-│       ├── workers/       # Celery app + tasks
-│       ├── db/            # ORM models + async session
-│       └── storage/       # 本地文件存储（dev）
-├── frontend/
-│   └── src/
-│       ├── components/    # UploadForm · PipelineStatus · NoteEditor
-│       ├── api/           # fetch 封装
-│       └── types/         # TS 类型定义
-├── artifacts/             # 运行时 artifact 存储根目录
-└── docker-compose.yml
+```text
+backend/app/
+├── api/routes/
+│   ├── upload.py
+│   ├── sessions.py
+│   ├── graph.py
+│   └── export.py
+├── services/
+│   ├── ingestion.py
+│   ├── graph_builder.py
+│   ├── search.py
+│   ├── notes.py
+│   └── text_utils.py
+├── core/types.py
+├── storage/local.py
+└── main.py
 ```
 
 ## 本地启动
 
-**前提：** Docker Desktop 已运行。
+### 方式一：Docker
 
 ```bash
-# 1. 配置环境变量
 cp .env.example .env
-# 填入 ANTHROPIC_API_KEY / GOOGLE_API_KEY / MINIMAX_API_KEY / OPENAI_API_KEY / TAVILY_API_KEY
-
-# 2. 启动全部服务
-docker compose up
-
-# 访问
-# Frontend:  http://localhost:5173
-# API docs:  http://localhost:8000/docs
+docker compose up --build
 ```
 
-不使用 Docker 时（纯本地）：
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000/docs`
+
+### 方式二：本地
 
 ```bash
-# Backend
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+```
 
-# Worker（新终端）
-celery -A app.workers.celery_app worker --loglevel=info
-
-# Frontend（新终端）
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## 环境变量说明
+## 当前实现说明
 
-| 变量 | 用途 |
-|---|---|
-| `SYNTHESIZE_LLM_PROVIDER` | `claude`（默认）或 `gemini` |
-| `RETRIEVE_LLM_PROVIDER` | `minimax`（默认，用于联网检索 Agent）|
-| `ANTHROPIC_API_KEY` | Claude 旗舰模型 |
-| `GOOGLE_API_KEY` | Gemini 旗舰模型 |
-| `MINIMAX_API_KEY` / `MINIMAX_GROUP_ID` | Minimax 检索 Agent |
-| `OPENAI_API_KEY` | 向量嵌入 |
-| `TAVILY_API_KEY` | 网络搜索 |
-
-## API 一览
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/upload/` | 上传文件，创建会话，触发 pipeline |
-| GET | `/sessions/` | 列出所有会话 |
-| GET | `/sessions/{id}/status` | 轮询 pipeline 状态 |
-| GET | `/export/{id}/{fmt}` | 导出笔记（`markdown` · `tex` · `txt`）|
-| POST | `/review/{id}` | 提交块级编辑 / 评分事件 |
-
-## 数据模型
-
-核心类型定义见 `backend/app/core/types.py`，包括：
-
-- **LectureSession** — 一次上传任务的完整状态
-- **NoteDocument** — 结构化笔记 JSON（含 sections / supplemental\_context / key\_terms / open\_questions）
-- **NoteBlock** — 最小笔记单元，携带 `provenance[]` 来源标注和 `grounding_level`
-- **ReviewEvent** — 每次用户编辑/评分均持久化，供后续微调数据收集
-
-## 开发状态
-
-| Stage | 状态 |
-|---|---|
-| 工程骨架 + 类型定义 | ✅ 完成 |
-| Stage 1 Ingest | 🔲 Stub |
-| Stage 2 Extract（ASR / PPTX / PDF）| 🔲 Stub |
-| Stage 3 Align（单调对齐）| 🔲 Stub |
-| Stage 4 Retrieve（Minimax Agent）| 🔲 Stub |
-| Stage 5 Synthesize（旗舰 LLM）| 🔲 Stub |
-| Stage 6 Review & Export | 🔲 Stub |
+- PDF 解析使用 `PyMuPDF`
+- 音频转写优先使用 `openai-whisper`
+- 如果当前环境没有装好 Whisper，音频 ingest 会写入降级提示文本，方便前端流程先跑通
+- 知识点抽取、关系抽取、聚类和笔记生成目前是 `规则 + 统计` 版本，接口已经稳定，后续可替换为 LLM / Neo4j 实现

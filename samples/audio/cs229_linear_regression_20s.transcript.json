@@ -1,0 +1,20 @@
+{
+  "language": "en",
+  "segments": [
+    {
+      "start": 4.27,
+      "end": 7.75,
+      "text": "morning and welcome back."
+    },
+    {
+      "start": 7.75,
+      "end": 14.11,
+      "text": "So what we'll see today in class is the first in-depth discussion of a learning"
+    },
+    {
+      "start": 14.11,
+      "end": 20.11,
+      "text": "algorithm linear regression, and in particular, over the next hour and a bit use..."
+    }
+  ]
+}

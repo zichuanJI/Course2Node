@@ -1,0 +1,175 @@
+from __future__ import annotations
+
+import hashlib
+import math
+import re
+from collections import Counter
+
+from app.config import settings
+
+EN_STOPWORDS = {
+    "the", "and", "for", "that", "with", "this", "from", "into", "your", "have",
+    "will", "then", "than", "when", "what", "where", "which", "while", "about",
+    "their", "there", "them", "they", "been", "being", "also", "such", "using",
+    "used", "into", "between", "through", "because", "each", "some", "more",
+    "most", "other", "many", "much", "very", "just", "only", "over", "under",
+}
+
+ZH_STOPWORDS = {
+    "我们", "你们", "他们", "这个", "那个", "一种", "以及", "如果", "因为", "所以", "然后",
+    "就是", "可以", "需要", "进行", "通过", "一个", "一些", "没有", "不是", "这种", "那个",
+    "课程", "内容", "知识", "问题", "什么", "怎么", "这里", "那里", "已经", "对于", "关于",
+}
+
+PUNCT_RE = re.compile(r"[^\w\u4e00-\u9fff]+", re.UNICODE)
+EN_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
+ZH_RUN_RE = re.compile(r"[\u4e00-\u9fff]{2,}")
+SENTENCE_RE = re.compile(r"(?<=[。！？!?;；\.])\s+")
+
+
+def normalize_text(text: str) -> str:
+    collapsed = re.sub(r"\s+", " ", text)
+    return collapsed.strip()
+
+
+def split_sentences(text: str) -> list[str]:
+    normalized = normalize_text(text)
+    if not normalized:
+        return []
+    parts = [part.strip() for part in SENTENCE_RE.split(normalized) if part.strip()]
+    return parts or [normalized]
+
+
+def summarize_text(text: str, max_sentences: int = 2, max_chars: int = 220) -> str:
+    sentences = split_sentences(text)
+    if not sentences:
+        return ""
+    summary = " ".join(sentences[:max_sentences])
+    return summary[:max_chars].strip()
+
+
+def split_text(text: str, max_chars: int = 500, overlap: int = 80) -> list[str]:
+    sentences = split_sentences(text)
+    if not sentences:
+        return []
+
+    chunks: list[str] = []
+    current = ""
+    for sentence in sentences:
+        if len(current) + len(sentence) + 1 <= max_chars:
+            current = f"{current} {sentence}".strip()
+            continue
+        if current:
+            chunks.append(current)
+        if len(sentence) <= max_chars:
+            current = sentence
+            continue
+        start = 0
+        while start < len(sentence):
+            piece = sentence[start:start + max_chars]
+            chunks.append(piece.strip())
+            start += max(max_chars - overlap, 1)
+        current = ""
+    if current:
+        chunks.append(current)
+    return [chunk for chunk in chunks if chunk]
+
+
+def english_tokens(text: str) -> list[str]:
+    return [
+        token.lower()
+        for token in EN_TOKEN_RE.findall(text)
+        if token.lower() not in EN_STOPWORDS
+    ]
+
+
+def chinese_terms(text: str) -> list[str]:
+    candidates: list[str] = []
+    for run in ZH_RUN_RE.findall(text):
+        cleaned = run.strip()
+        if cleaned in ZH_STOPWORDS:
+            continue
+        if 2 <= len(cleaned) <= 8:
+            candidates.append(cleaned)
+        for n in (2, 3, 4):
+            if len(cleaned) < n:
+                continue
+            for index in range(len(cleaned) - n + 1):
+                term = cleaned[index:index + n]
+                if term in ZH_STOPWORDS:
+                    continue
+                candidates.append(term)
+    return candidates
+
+
+def extract_candidate_terms(text: str, top_k: int = 12) -> list[str]:
+    raw_terms = english_tokens(text) + chinese_terms(text)
+    if not raw_terms:
+        return []
+    counts = Counter(raw_terms)
+    ranked = [
+        term for term, _ in counts.most_common(top_k * 2)
+        if is_reasonable_term(term)
+    ]
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in ranked:
+        if term in seen:
+            continue
+        seen.add(term)
+        deduped.append(term)
+        if len(deduped) >= top_k:
+            break
+    return deduped
+
+
+def is_reasonable_term(term: str) -> bool:
+    if term.isdigit():
+        return False
+    if len(term) <= 1:
+        return False
+    if all(char == term[0] for char in term):
+        return False
+    if term in EN_STOPWORDS or term in ZH_STOPWORDS:
+        return False
+    return True
+
+
+def canonicalize_term(term: str) -> str:
+    cleaned = PUNCT_RE.sub(" ", term).strip().lower()
+    return re.sub(r"\s+", " ", cleaned)
+
+
+def hash_embedding(text: str, dims: int | None = None) -> list[float]:
+    dims = dims or settings.embedding_dimensions
+    vector = [0.0] * dims
+    for token in extract_candidate_terms(text, top_k=32) or english_tokens(text):
+        digest = hashlib.sha256(token.encode("utf-8")).digest()
+        index = int.from_bytes(digest[:4], "big") % dims
+        sign = 1.0 if digest[4] % 2 == 0 else -1.0
+        weight = max(len(token), 1)
+        vector[index] += sign * weight
+
+    norm = math.sqrt(sum(value * value for value in vector))
+    if norm == 0:
+        return vector
+    return [value / norm for value in vector]
+
+
+def cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    return sum(a * b for a, b in zip(left, right))
+
+
+def best_snippet(text: str, query_terms: list[str], max_chars: int = 180) -> str:
+    sentences = split_sentences(text)
+    if not sentences:
+        return text[:max_chars]
+    scored = sorted(
+        sentences,
+        key=lambda sentence: sum(sentence.lower().count(term.lower()) for term in query_terms),
+        reverse=True,
+    )
+    return scored[0][:max_chars]
+
