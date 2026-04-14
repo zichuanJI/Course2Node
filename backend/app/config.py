@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
 
     # Storage
     storage_backend: str = "local"
-    local_storage_path: str = "/artifacts"
+    local_storage_path: str = str(Path(__file__).resolve().parents[2] / "artifacts")
 
     # LLM
     synthesize_llm_provider: str = "claude"  # claude | gemini
@@ -27,6 +28,11 @@ class Settings(BaseSettings):
     # Embed
     embed_provider: str = "openai"  # openai | gemini
     openai_api_key: str = ""
+    embedding_dimensions: int = 64
+    whisper_model_size: str = "base"
+    whisper_language: str = "auto"
+    faster_whisper_python_path: str = "/Users/zicheng/Documents/Playground/2026.3.13 Video-Note-Tool/.venv/bin/python"
+    faster_whisper_runner_path: str = str(Path(__file__).resolve().parent / "services" / "faster_whisper_runner.py")
 
     # Search
     search_provider: str = "tavily"  # tavily | bing

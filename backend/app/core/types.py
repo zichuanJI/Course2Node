@@ -1,7 +1,3 @@
-"""
-Canonical data types for Course2Note.
-All pipeline stages read and write these types.
-"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,201 +8,238 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 
-# ---------------------------------------------------------------------------
-# Enums
-# ---------------------------------------------------------------------------
-
 class SessionStatus(str, Enum):
-    pending = "pending"
+    draft = "draft"
+    uploaded = "uploaded"
     ingesting = "ingesting"
-    extracting = "extracting"
-    aligning = "aligning"
-    retrieving = "retrieving"
-    synthesizing = "synthesizing"
-    review = "review"
-    done = "done"
+    graph_ready = "graph_ready"
+    notes_ready = "notes_ready"
     failed = "failed"
 
 
-class SourceType(str, Enum):
+class SourceKind(str, Enum):
+    pdf = "pdf"
     audio = "audio"
-    slides = "slides"
-    context_docs = "context_docs"
-    web = "web"
-    human_edit = "human_edit"
 
 
-class NoteBlockKind(str, Enum):
-    summary = "summary"
-    section = "section"
-    supplement = "supplement"
-    term = "term"
-    warning = "warning"
-    question = "question"
+class NodeType(str, Enum):
+    concept = "concept"
+    topic_cluster = "topic_cluster"
 
 
-class GroundingLevel(str, Enum):
-    lecture = "lecture"
-    supplemental = "supplemental"
-    mixed = "mixed"
+class EdgeType(str, Enum):
+    mentions = "MENTIONS"
+    relates_to = "RELATES_TO"
+    co_occurs_with = "CO_OCCURS_WITH"
+    contains = "CONTAINS"
 
 
-class ReviewAction(str, Enum):
-    edit = "edit"
-    accept = "accept"
-    reject = "reject"
-    rate = "rate"
+class RelationType(str, Enum):
+    is_a = "is_a"
+    part_of = "part_of"
+    prerequisite_of = "prerequisite_of"
+    causes = "causes"
+    used_for = "used_for"
+    similar_to = "similar_to"
 
-
-class ExportFormat(str, Enum):
-    markdown = "markdown"
-    tex = "tex"
-    txt = "txt"
-
-
-# ---------------------------------------------------------------------------
-# Source file record
-# ---------------------------------------------------------------------------
 
 class SourceFile(BaseModel):
-    file_id: UUID = Field(default_factory=uuid4)
+    source_id: UUID = Field(default_factory=uuid4)
+    kind: SourceKind
     filename: str
-    content_type: str          # MIME type
-    storage_path: str          # path in artifact store
+    content_type: str
+    storage_path: str
     size_bytes: int
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    ingested: bool = False
+    ingest_artifact_path: str | None = None
 
 
-# ---------------------------------------------------------------------------
-# Stage 1 – LectureSession
-# ---------------------------------------------------------------------------
+class SessionStats(BaseModel):
+    document_count: int = 0
+    audio_count: int = 0
+    chunk_count: int = 0
+    concept_count: int = 0
+    relation_count: int = 0
+    cluster_count: int = 0
 
-class LectureSession(BaseModel):
-    id: UUID = Field(default_factory=uuid4)
+
+class CourseSession(BaseModel):
+    session_id: UUID = Field(default_factory=uuid4)
     course_title: str
     lecture_title: str
-    language: str = "auto"    # "auto" | "zh" | "en"
-    source_files: list[SourceFile] = []
-    status: SessionStatus = SessionStatus.pending
+    status: SessionStatus = SessionStatus.draft
+    source_files: list[SourceFile] = Field(default_factory=list)
+    stats: SessionStats = Field(default_factory=SessionStats)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     error_message: str | None = None
 
 
-# ---------------------------------------------------------------------------
-# Stage 2 – Extract
-# ---------------------------------------------------------------------------
-
-class TranscriptSegment(BaseModel):
-    segment_id: UUID = Field(default_factory=uuid4)
-    start_sec: float
-    end_sec: float
+class EvidenceChunk(BaseModel):
+    chunk_id: str
+    source_id: str
+    source_type: SourceKind
     text: str
-    confidence: float = 1.0
+    summary: str
+    keywords: list[str] = Field(default_factory=list)
+    embedding: list[float] = Field(default_factory=list)
+    page_start: int | None = None
+    page_end: int | None = None
+    time_start: float | None = None
+    time_end: float | None = None
 
 
-class SlideUnit(BaseModel):
-    index: int                        # 0-based slide/page number
-    title: str = ""
-    body_text: str = ""
-    speaker_notes: str = ""
-    ocr_text: str = ""                # populated only when OCR was used
-    image_refs: list[str] = []        # storage paths for extracted images
+class IngestArtifact(BaseModel):
+    session_id: UUID
+    source_id: UUID
+    source_kind: SourceKind
+    chunks: list[EvidenceChunk] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
-
-# ---------------------------------------------------------------------------
-# Stage 3 – Align
-# ---------------------------------------------------------------------------
-
-class AlignedChunk(BaseModel):
-    chunk_id: UUID = Field(default_factory=uuid4)
-    transcript_segment_ids: list[UUID]
-    primary_slide_index: int | None   # None when no slide available
-    candidate_slide_indexes: list[int] = []
-    alignment_confidence: float = 1.0  # 0-1; below 0.5 → flagged uncertain
-
-
-# ---------------------------------------------------------------------------
-# Evidence & provenance
-# ---------------------------------------------------------------------------
 
 class EvidenceRef(BaseModel):
-    source_type: SourceType
-    source_id: str             # segment_id / slide index / file_id / url hash
-    locator: str               # human-readable pointer ("slide 3", "00:42-01:05")
-    url: str | None = None     # only for source_type=web
+    chunk_id: str
+    source_id: str
+    source_type: SourceKind
+    locator: str
+    snippet: str
+    score: float = 0.0
 
 
-# ---------------------------------------------------------------------------
-# Stage 5 – NoteDocument
-# ---------------------------------------------------------------------------
+class ConceptNode(BaseModel):
+    concept_id: str
+    name: str
+    canonical_name: str
+    aliases: list[str] = Field(default_factory=list)
+    definition: str = ""
+    embedding: list[float] = Field(default_factory=list)
+    importance_score: float = 0.0
+    source_count: int = 0
+    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
 
-class NoteBlock(BaseModel):
-    id: UUID = Field(default_factory=uuid4)
-    kind: NoteBlockKind
-    title: str = ""
-    content_md: str
-    provenance: list[EvidenceRef] = []
-    citations: list[EvidenceRef] = []
-    grounding_level: GroundingLevel = GroundingLevel.lecture
+
+class TopicClusterNode(BaseModel):
+    cluster_id: str
+    title: str
+    summary: str
+    concept_ids: list[str] = Field(default_factory=list)
+
+
+class GraphEdge(BaseModel):
+    edge_id: str = Field(default_factory=lambda: str(uuid4()))
+    source: str
+    target: str
+    edge_type: EdgeType
+    properties: dict[str, Any] = Field(default_factory=dict)
+
+
+class GraphArtifact(BaseModel):
+    session_id: UUID
+    concepts: list[ConceptNode] = Field(default_factory=list)
+    topic_clusters: list[TopicClusterNode] = Field(default_factory=list)
+    edges: list[GraphEdge] = Field(default_factory=list)
+    built_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SearchConceptHit(BaseModel):
+    concept_id: str
+    name: str
+    canonical_name: str
+    score: float
+    source_count: int
+    evidence_chunk_ids: list[str] = Field(default_factory=list)
+
+
+class SearchChunkHit(BaseModel):
+    chunk_id: str
+    source_id: str
+    source_type: SourceKind
+    score: float
+    text: str
+    page_start: int | None = None
+    page_end: int | None = None
+    time_start: float | None = None
+    time_end: float | None = None
+
+
+class SearchResponse(BaseModel):
+    session_id: UUID
+    query: str
+    concepts: list[SearchConceptHit] = Field(default_factory=list)
+    chunks: list[SearchChunkHit] = Field(default_factory=list)
+
+
+class SubgraphNode(BaseModel):
+    id: str
+    label: str
+    node_type: NodeType
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SubgraphEdge(BaseModel):
+    source: str
+    target: str
+    edge_type: EdgeType
+    properties: dict[str, Any] = Field(default_factory=dict)
+
+
+class SubgraphResponse(BaseModel):
+    session_id: UUID
+    center_concept_id: str
+    nodes: list[SubgraphNode] = Field(default_factory=list)
+    edges: list[SubgraphEdge] = Field(default_factory=list)
+
+
+class NoteReference(BaseModel):
+    source_type: SourceKind
+    source_id: str
+    locator: str
+    snippet: str
 
 
 class NoteSection(BaseModel):
-    section_id: UUID = Field(default_factory=uuid4)
+    section_id: str = Field(default_factory=lambda: str(uuid4()))
     title: str
-    blocks: list[NoteBlock] = []
-    slide_range: tuple[int, int] | None = None   # (first_slide, last_slide)
-
-
-class NoteMetadata(BaseModel):
-    session_id: UUID
-    course_title: str
-    lecture_title: str
-    language: str
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
-    pipeline_version: str = "0.1.0"
-
-
-class ExportMetadata(BaseModel):
-    formats_available: list[ExportFormat] = []
-    last_exported_at: datetime | None = None
+    content_md: str
+    concept_ids: list[str] = Field(default_factory=list)
+    references: list[NoteReference] = Field(default_factory=list)
 
 
 class NoteDocument(BaseModel):
-    metadata: NoteMetadata
-    one_paragraph_summary: str = ""
-    sections: list[NoteSection] = []
-    supplemental_context: list[NoteBlock] = []
-    key_terms: list[NoteBlock] = []
-    open_questions: list[NoteBlock] = []
-    export_metadata: ExportMetadata = Field(default_factory=ExportMetadata)
-
-
-# ---------------------------------------------------------------------------
-# Stage 6 – Review
-# ---------------------------------------------------------------------------
-
-class ReviewEvent(BaseModel):
-    event_id: UUID = Field(default_factory=uuid4)
+    note_id: str = Field(default_factory=lambda: str(uuid4()))
     session_id: UUID
-    note_block_id: UUID
-    action: ReviewAction
-    before: str | None = None      # markdown content before edit
-    after: str | None = None       # markdown content after edit
-    user_rating: int | None = None  # 1-5
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    title: str
+    topic: str
+    summary: str
+    sections: list[NoteSection] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-# ---------------------------------------------------------------------------
-# Pipeline artifact envelope
-# Used to version-stamp every stage output written to disk / DB.
-# ---------------------------------------------------------------------------
-
-class PipelineArtifact(BaseModel):
-    artifact_id: UUID = Field(default_factory=uuid4)
+class UploadResponse(BaseModel):
     session_id: UUID
-    stage: str                      # "extract" | "align" | "retrieve" | "synthesize"
-    version: int = 1
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    storage_path: str
-    extra: dict[str, Any] = {}     # stage-specific metadata (prompt, model used, etc.)
+    source_id: UUID
+    kind: SourceKind
+    status: SessionStatus
+
+
+class IngestRequest(BaseModel):
+    session_id: UUID
+    source_id: UUID
+
+
+class BuildGraphRequest(BaseModel):
+    session_id: UUID
+
+
+class SearchRequest(BaseModel):
+    session_id: UUID
+    query: str
+    limit: int = 8
+
+
+class GenerateNotesRequest(BaseModel):
+    session_id: UUID
+    topic: str
+    concept_ids: list[str] = Field(default_factory=list)

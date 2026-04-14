@@ -1,40 +1,127 @@
-"""Local disk artifact storage (dev mode)."""
 from __future__ import annotations
 
 import json
 import uuid
 from pathlib import Path
+from typing import TypeVar
+
+from pydantic import BaseModel
 
 from app.config import settings
+from app.core.types import CourseSession, GraphArtifact, IngestArtifact, NoteDocument
+
+T = TypeVar("T", bound=BaseModel)
 
 
 def _root() -> Path:
-    p = Path(settings.local_storage_path)
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def artifact_path(session_id: uuid.UUID, stage: str, version: int, ext: str = "json") -> Path:
-    """Returns the path where an artifact should be stored."""
-    d = _root() / str(session_id) / stage
-    d.mkdir(parents=True, exist_ok=True)
-    return d / f"v{version}.{ext}"
-
-
-def write_artifact(session_id: uuid.UUID, stage: str, version: int, data: dict) -> Path:
-    path = artifact_path(session_id, stage, version)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+    path = Path(settings.local_storage_path)
+    path.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def read_artifact(session_id: uuid.UUID, stage: str, version: int) -> dict:
-    path = artifact_path(session_id, stage, version)
-    return json.loads(path.read_text())
+def session_dir(session_id: uuid.UUID) -> Path:
+    path = _root() / str(session_id)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def list_session_ids() -> list[uuid.UUID]:
+    ids: list[uuid.UUID] = []
+    for candidate in _root().iterdir():
+        if not candidate.is_dir():
+            continue
+        try:
+            ids.append(uuid.UUID(candidate.name))
+        except ValueError:
+            continue
+    return sorted(ids, reverse=True)
+
+
+def _read_model(path: Path, model_type: type[T]) -> T:
+    return model_type.model_validate_json(path.read_text())
+
+
+def _write_model(path: Path, model: BaseModel) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(model.model_dump_json(indent=2), encoding="utf-8")
+    return path
+
+
+def session_path(session_id: uuid.UUID) -> Path:
+    return session_dir(session_id) / "session.json"
+
+
+def save_session(session: CourseSession) -> Path:
+    return _write_model(session_path(session.session_id), session)
+
+
+def load_session(session_id: uuid.UUID) -> CourseSession:
+    return _read_model(session_path(session_id), CourseSession)
+
+
+def upload_dir(session_id: uuid.UUID) -> Path:
+    path = session_dir(session_id) / "uploads"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def write_upload(session_id: uuid.UUID, filename: str, data: bytes) -> Path:
-    d = _root() / str(session_id) / "uploads"
-    d.mkdir(parents=True, exist_ok=True)
-    p = d / filename
-    p.write_bytes(data)
-    return p
+    path = upload_dir(session_id) / filename
+    path.write_bytes(data)
+    return path
+
+
+def ingest_dir(session_id: uuid.UUID) -> Path:
+    path = session_dir(session_id) / "ingest"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def ingest_path(session_id: uuid.UUID, source_id: uuid.UUID) -> Path:
+    return ingest_dir(session_id) / f"{source_id}.json"
+
+
+def save_ingest_artifact(artifact: IngestArtifact) -> Path:
+    return _write_model(ingest_path(artifact.session_id, artifact.source_id), artifact)
+
+
+def load_ingest_artifact(session_id: uuid.UUID, source_id: uuid.UUID) -> IngestArtifact:
+    return _read_model(ingest_path(session_id, source_id), IngestArtifact)
+
+
+def list_ingest_artifacts(session_id: uuid.UUID) -> list[IngestArtifact]:
+    path = ingest_dir(session_id)
+    return [
+        _read_model(candidate, IngestArtifact)
+        for candidate in sorted(path.glob("*.json"))
+    ]
+
+
+def graph_path(session_id: uuid.UUID) -> Path:
+    return session_dir(session_id) / "graph.json"
+
+
+def save_graph_artifact(graph: GraphArtifact) -> Path:
+    return _write_model(graph_path(graph.session_id), graph)
+
+
+def load_graph_artifact(session_id: uuid.UUID) -> GraphArtifact:
+    return _read_model(graph_path(session_id), GraphArtifact)
+
+
+def notes_path(session_id: uuid.UUID) -> Path:
+    return session_dir(session_id) / "notes.json"
+
+
+def save_note(note: NoteDocument) -> Path:
+    return _write_model(notes_path(note.session_id), note)
+
+
+def load_note(session_id: uuid.UUID) -> NoteDocument:
+    return _read_model(notes_path(session_id), NoteDocument)
+
+
+def write_json(path: Path, data: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
