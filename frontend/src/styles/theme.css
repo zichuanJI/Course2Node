@@ -1,0 +1,108 @@
+:root {
+  /* === 背景 === */
+  --bg-color:              #faf9f6;
+  --window-bg-color:       #f6f3ed;
+  --side-bar-bg-color:     #f5f2ec;
+  --quote-bg-color:        #f3ede5;
+  --code-bg-color:         #fcfcfa;
+  --inline-code-bg-color:  #f2eeea;
+  --table-alt-color:       #f8f3ec;
+
+  /* === 文字 === */
+  --text-color:            #2b2621;
+  --heading-color:         #1c1815;
+  --control-text-color:    #72695e;
+  --quote-text-color:      #625950;
+  --inline-code-color:     #b14a40;
+
+  /* === 强调 === */
+  --accent-color:          #bc6a3a;
+  --accent-hover:          #9d552d;
+  --accent-soft:           rgba(194, 113, 62, 0.08);
+  --accent-strong:         rgba(194, 113, 62, 0.12);
+  --selection-color:       #e8ddd0;
+  --table-row-hover:       rgba(188, 106, 58, 0.05);
+
+  /* === 边框 === */
+  --border-color:                 #ddd5ca;
+  --quote-border-color:           #d8cbbb;
+  --code-border-color:            #e9e2d8;
+  --inline-code-border-color:     #d7cec5;
+  --table-border-strong-color:    #cbb9a6;
+  --table-row-border-color:       rgba(114, 105, 94, 0.26);
+  --active-file-border-color:     #d6b79b;
+
+  /* === 语义色 === */
+  --color-success:         #4a7a4a;
+  --color-success-bg:      #edf5ed;
+  --color-danger:          #b04a3a;
+  --color-danger-bg:       #f8edeb;
+  --color-warning:         #c48a2a;
+  --color-warning-bg:      #fdf4e3;
+  --color-info:            #2c5ec6;
+  --color-info-bg:         #e8eef9;
+
+  /* === 代码高亮 === */
+  --code-comment:          #6f665d;
+  --code-keyword:          #7b2ff7;
+  --code-string:           #2f8f2f;
+  --code-number:           #c06a2a;
+  --code-tag:              #2c5ec6;
+  --code-operator:         #1c1815;
+
+  /* === 圆角 === */
+  --radius-xs:   6px;
+  --radius-sm:   8px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-pill: 999px;
+
+  /* === 间距 === */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* === 字体 === */
+  --font-body: Georgia, "Songti SC", "宋体", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+  --font-ui:   "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --font-mono: Menlo, Monaco, "SF Mono", Consolas, "Sarasa Mono SC", "Cascadia Code", monospace;
+
+  /* === 字号 / 行高 === */
+  --fs-base:       16px;
+  --lh-body:       1.62;
+  --lh-heading-1:  1.16;
+  --lh-heading-2:  1.20;
+  --lh-heading-3:  1.32;
+  --em-h1:         1.84em;
+  --em-h2:         1.48em;
+  --em-h3:         1.24em;
+  --em-h4:         1.12em;
+  --em-h5:         1.00em;
+  --em-code:       0.9em;
+  --em-table:      0.93rem;
+
+  /* === 布局 === */
+  --content-max:           780px;
+
+  /* === 阴影、动效 === */
+  --shadow-panel:     0 10px 24px rgba(73, 49, 34, 0.08);
+  --shadow-code:      0 1px 0 rgba(43, 38, 33, 0.03);
+  --shadow-inline-hi: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  --shadow-sm:        0 1px 3px rgba(28, 24, 21, 0.06);
+
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --ease:     cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (min-width: 1400px) {
+  :root { --content-max: 820px; }
+}
+@media (min-width: 1800px) {
+  :root { --content-max: 880px; }
+}

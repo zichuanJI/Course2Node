@@ -1,0 +1,38 @@
+.new-session-page {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-8);
+}
+
+.new-session-heading {
+  font-size: var(--em-h2);
+  margin-bottom: var(--space-6);
+}
+
+.new-session-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.new-session-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+@media (max-width: 600px) {
+  .new-session-fields { grid-template-columns: 1fr; }
+}
+
+.new-session-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.new-session-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}

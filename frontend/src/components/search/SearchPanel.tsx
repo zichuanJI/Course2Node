@@ -1,0 +1,152 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { searchGraph } from "../../api/client";
+import { Input } from "../primitives/Input";
+import { Pill } from "../primitives/Pill";
+import { useDebouncedCallback } from "../../hooks/useDebouncedCallback";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
+import type { SearchResponse } from "../../types";
+import "./SearchPanel.css";
+
+type FilterKind = "all" | "concepts" | "chunks";
+type SourceFilter = "all" | "pdf" | "audio";
+
+export function SearchPanel({ sessionId }: { sessionId: string }) {
+  const [, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState("");
+  const [filterKind, setFilterKind] = useState<FilterKind>("all");
+  const [filterSource, setFilterSource] = useState<SourceFilter>("all");
+  const [results, setResults] = useState<SearchResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [recentQueries, setRecentQueries] = useLocalStorage<string[]>(
+    `c2n:recent:${sessionId}`,
+    [],
+  );
+  const latestQuery = useRef("");
+
+  const doSearch = useCallback(
+    async (q: string) => {
+      if (!q.trim()) { setResults(null); return; }
+      setLoading(true);
+      try {
+        const res = await searchGraph({ session_id: sessionId, query: q, limit: 12 });
+        if (q === latestQuery.current) setResults(res);
+      } catch {
+        // silent
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sessionId],
+  );
+
+  const debouncedSearch = useDebouncedCallback(doSearch, 300);
+
+  function handleInput(value: string) {
+    setQuery(value);
+    latestQuery.current = value;
+    debouncedSearch(value);
+  }
+
+  function handleSubmit() {
+    if (!query.trim()) return;
+    doSearch(query);
+    setRecentQueries([query, ...recentQueries.filter((q) => q !== query)].slice(0, 8));
+  }
+
+  const concepts = results?.concepts.filter((c) =>
+    filterSource === "all" ? true : true, // concepts aren't source-filtered
+  ) ?? [];
+
+  const chunks = results?.chunks.filter((c) => {
+    if (filterSource === "pdf") return c.source_type === "pdf";
+    if (filterSource === "audio") return c.source_type === "audio";
+    return true;
+  }) ?? [];
+
+  return (
+    <div className="search-panel">
+      <div className="search-input-row">
+        <Input
+          placeholder="搜索知识点、内容…"
+          value={query}
+          onChange={(e) => handleInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+        />
+      </div>
+
+      <div className="search-filters">
+        {(["all", "concepts", "chunks"] as FilterKind[]).map((k) => (
+          <Pill key={k} active={filterKind === k} onClick={() => setFilterKind(k)}>
+            {{ all: "全部", concepts: "知识点", chunks: "内容片段" }[k]}
+          </Pill>
+        ))}
+        <span style={{ flexBasis: "100%", height: 0 }} />
+        {(["all", "pdf", "audio"] as SourceFilter[]).map((s) => (
+          <Pill key={s} active={filterSource === s} onClick={() => setFilterSource(s)}>
+            {{ all: "全部来源", pdf: "PDF", audio: "音频" }[s]}
+          </Pill>
+        ))}
+      </div>
+
+      {!query && recentQueries.length > 0 && (
+        <div className="search-recent">
+          <span className="search-recent-label">最近搜索</span>
+          {recentQueries.map((q) => (
+            <Pill key={q} onClick={() => { setQuery(q); latestQuery.current = q; doSearch(q); }}>
+              {q}
+            </Pill>
+          ))}
+        </div>
+      )}
+
+      {loading && <p style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--control-text-color)" }}>搜索中…</p>}
+
+      {results && (
+        <div className="search-results">
+          {filterKind !== "chunks" && concepts.length > 0 && (
+            <div>
+              <div className="search-section-label">知识点 ({concepts.length})</div>
+              {concepts.map((c) => (
+                <div
+                  key={c.concept_id}
+                  className="search-concept-hit"
+                  onClick={() => setSearchParams({ concept: c.concept_id })}
+                >
+                  <div className="search-concept-name">{c.name}</div>
+                  <div className="search-concept-meta">
+                    {c.canonical_name !== c.name && `规范名：${c.canonical_name} · `}
+                    来源数 {c.source_count}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {filterKind !== "concepts" && chunks.length > 0 && (
+            <div>
+              <div className="search-section-label">内容片段 ({chunks.length})</div>
+              {chunks.map((c) => (
+                <div key={c.chunk_id} className="search-chunk-hit">
+                  <div className="search-chunk-text">{c.text}</div>
+                  <div className="search-chunk-meta">
+                    {c.source_type === "pdf"
+                      ? `PDF · 第 ${c.page_start} 页`
+                      : `音频 · ${c.time_start?.toFixed(1)}s`}
+                    {" · "}相关度 {(c.score * 100).toFixed(0)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {concepts.length === 0 && chunks.length === 0 && (
+            <p style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--control-text-color)" }}>
+              未找到相关内容
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

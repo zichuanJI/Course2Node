@@ -1,0 +1,42 @@
+.pipeline-page {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-6) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.pipeline-heading {
+  font-size: var(--em-h2);
+  margin-bottom: var(--space-2);
+}
+
+.pipeline-sub {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: var(--control-text-color);
+  margin: 0;
+}
+
+.pipeline-card {
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+}
+
+.pipeline-error {
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: var(--color-danger);
+}
+
+.pipeline-actions {
+  display: flex;
+  gap: var(--space-3);
+}

@@ -41,6 +41,50 @@ export interface CourseSession {
   error_message?: string | null;
 }
 
+export interface EvidenceRef {
+  chunk_id: string;
+  source_id: string;
+  source_type: SourceKind;
+  locator: string;
+  snippet: string;
+  score: number;
+}
+
+export interface ConceptNode {
+  concept_id: string;
+  name: string;
+  canonical_name: string;
+  aliases: string[];
+  definition: string;
+  embedding: number[];
+  importance_score: number;
+  source_count: number;
+  evidence_refs: EvidenceRef[];
+}
+
+export interface TopicClusterNode {
+  cluster_id: string;
+  title: string;
+  summary: string;
+  concept_ids: string[];
+}
+
+export interface GraphEdge {
+  edge_id: string;
+  source: string;
+  target: string;
+  edge_type: "MENTIONS" | "RELATES_TO" | "CO_OCCURS_WITH" | "CONTAINS";
+  properties: Record<string, unknown>;
+}
+
+export interface GraphArtifact {
+  session_id: string;
+  concepts: ConceptNode[];
+  topic_clusters: TopicClusterNode[];
+  edges: GraphEdge[];
+  built_at: string;
+}
+
 export interface SearchConceptHit {
   concept_id: string;
   name: string;
@@ -114,4 +158,3 @@ export interface NoteDocument {
   sections: NoteSection[];
   generated_at: string;
 }
-

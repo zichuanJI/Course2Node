@@ -1,0 +1,51 @@
+.note-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.note-view-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.note-view-title {
+  font-size: var(--em-h2);
+  margin: 0;
+  line-height: var(--lh-heading-2);
+}
+
+.note-view-summary {
+  color: var(--quote-text-color);
+  font-style: italic;
+  border-left: 2px solid var(--quote-border-color);
+  background: var(--quote-bg-color);
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-md);
+}
+
+.note-section {
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--space-5);
+}
+
+.note-section-title {
+  font-size: var(--em-h3);
+  margin-top: 0;
+  margin-bottom: var(--space-3);
+}
+
+.note-generate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.note-generate-label {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: var(--control-text-color);
+}

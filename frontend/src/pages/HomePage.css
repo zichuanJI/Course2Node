@@ -1,0 +1,26 @@
+.home-page {
+  max-width: calc(var(--content-max) * 1.5);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-8);
+}
+
+.home-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+
+.home-page-heading {
+  font-family: var(--font-body);
+  font-size: var(--em-h2);
+  font-weight: 600;
+  color: var(--heading-color);
+  margin: 0;
+}
+
+.session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-4);
+}
