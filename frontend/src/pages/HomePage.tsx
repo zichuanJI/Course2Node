@@ -122,9 +122,9 @@ export function HomePage() {
       {/* Header */}
       <div className="home-head">
         <div className="home-head-left">
-          <div className="home-head-label">课程库 · Library</div>
+          <div className="home-head-label">课程库 · LIBRARY</div>
           <h1 className="home-title">
-            知识<em>图谱</em>库
+            我的课程 / <em>notes</em>
           </h1>
           <p className="home-sub">
             {sessions.length} 节课程 · {readyCount} 已就绪 · {totalConcepts.toLocaleString()} 概念节点
