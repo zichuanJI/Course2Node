@@ -1,3 +1,66 @@
+/* ============================================================
+   Prototype token aliases — new components use these names
+   ============================================================ */
+:root {
+  --bg:            #faf7f1;
+  --bg-2:          #f3ede2;
+  --panel:         #fffdf7;
+  --panel-2:       #f8f3e8;
+  --ink:           #1f1a15;
+  --ink-2:         #3a322a;
+  --ink-3:         #7a7063;
+  --ink-4:         #a89e90;
+  --rule:          #e4dccd;
+  --rule-strong:   #c7baa2;
+  --accent:        #b25a2d;
+  --accent-2:      #8e4420;
+  --accent-soft:   rgba(178,90,45,0.10);
+  --accent-ghost:  rgba(178,90,45,0.04);
+  --ok:            #4a7a4a;
+  --warn:          #c48a2a;
+  --err:           #b04a3a;
+  --info:          #2c5ec6;
+  --font-serif:    "Source Serif 4", "Source Serif Pro", Georgia, "Songti SC", "宋体", serif;
+  --font-ui:       "Inter", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif;
+  --font-mono:     "JetBrains Mono", "SF Mono", Menlo, Consolas, "Sarasa Mono SC", monospace;
+  --shadow-1:      0 1px 2px rgba(28,22,15,0.05), 0 1px 0 rgba(28,22,15,0.02);
+  --shadow-2:      0 2px 8px rgba(28,22,15,0.06), 0 1px 2px rgba(28,22,15,0.04);
+  --shadow-3:      0 12px 32px rgba(28,22,15,0.10), 0 2px 8px rgba(28,22,15,0.05);
+  --ease:          cubic-bezier(0.22, 0.8, 0.26, 1);
+  --dur-fast:      140ms;
+  --dur-base:      220ms;
+  --dur-slow:      380ms;
+}
+
+/* ============================================================
+   Theme presets — applied via data-theme on <html>
+   ============================================================ */
+[data-theme="copper"] {
+  --bg:#faf7f1; --panel:#fffdf7; --accent:#b25a2d; --accent-2:#8e4420;
+  --accent-soft:rgba(178,90,45,0.10); --accent-ghost:rgba(178,90,45,0.04);
+}
+[data-theme="ink"] {
+  --bg:#f6f4ef; --panel:#fbf9f3; --ink:#14181f; --ink-2:#2b313d; --ink-3:#6b7280;
+  --accent:#2b4a7f; --accent-2:#1c3561;
+  --accent-soft:rgba(43,74,127,0.10); --accent-ghost:rgba(43,74,127,0.04);
+  --rule:#dcd8ce;
+}
+[data-theme="forest"] {
+  --bg:#f6f7f1; --panel:#fbfcf5; --ink:#17201a; --ink-2:#2d3b30; --ink-3:#6b7361;
+  --accent:#4e6d3e; --accent-2:#37512b;
+  --accent-soft:rgba(78,109,62,0.10); --accent-ghost:rgba(78,109,62,0.04);
+  --rule:#dbe0c9;
+}
+[data-theme="violet"] {
+  --bg:#f7f4f6; --panel:#fcfaf9; --ink:#1a161e; --ink-2:#342b3b; --ink-3:#6e6575;
+  --accent:#6d4c8c; --accent-2:#52366d;
+  --accent-soft:rgba(109,76,140,0.10); --accent-ghost:rgba(109,76,140,0.04);
+  --rule:#ddd4e0;
+}
+
+/* ============================================================
+   Legacy tokens (kept for backward compat)
+   ============================================================ */
 :root {
   /* === 背景 === */
   --bg-color:              #faf9f6;
@@ -68,9 +131,9 @@
   --space-8: 64px;
 
   /* === 字体 === */
-  --font-body: Georgia, "Songti SC", "宋体", "Noto Serif CJK SC", "Source Han Serif SC", serif;
-  --font-ui:   "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-  --font-mono: Menlo, Monaco, "SF Mono", Consolas, "Sarasa Mono SC", "Cascadia Code", monospace;
+  --font-body: "Source Serif 4", "Source Serif Pro", Georgia, "Songti SC", "宋体", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+  --font-ui:   "Inter", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, "Sarasa Mono SC", "Cascadia Code", monospace;
 
   /* === 字号 / 行高 === */
   --fs-base:       16px;

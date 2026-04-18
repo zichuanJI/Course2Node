@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import itertools
+import logging
 import uuid
 from collections import Counter, defaultdict
+from datetime import datetime
 
+from app.config import settings
 from app.core.types import (
     ConceptNode,
-    CourseSession,
     EdgeType,
     EvidenceChunk,
     EvidenceRef,
@@ -16,6 +18,7 @@ from app.core.types import (
     SessionStatus,
     TopicClusterNode,
 )
+from app.services.llm_graph import GraphExtractionResult, extract_graph_candidates, llm_graph_configured
 from app.services.text_utils import (
     best_snippet,
     canonicalize_term,
@@ -26,33 +29,254 @@ from app.services.text_utils import (
 )
 from app.storage.local import list_ingest_artifacts, load_session, save_graph_artifact, save_session
 
+logger = logging.getLogger(__name__)
+
 
 def build_graph(session_id: uuid.UUID) -> GraphArtifact:
     session = load_session(session_id)
-    artifacts = list_ingest_artifacts(session_id)
-    chunks = [chunk for artifact in artifacts for chunk in artifact.chunks]
+    try:
+        artifacts = list_ingest_artifacts(session_id)
+        if not artifacts:
+            raise ValueError("No ingest artifacts found. Run /ingest/pdf or /ingest/audio first.")
+
+        chunks = [chunk for artifact in artifacts for chunk in artifact.chunks]
+        if not chunks:
+            raise ValueError("No evidence chunks available. Check the uploaded files and ingest output.")
+
+        concepts, edges = _extract_graph_structure(chunks)
+        if not concepts:
+            raise ValueError("No concepts could be extracted from the ingested sources.")
+        _assign_importance_scores(concepts, edges)
+        clusters = _build_clusters(concepts, edges)
+        graph = GraphArtifact(
+            session_id=session_id,
+            concepts=concepts,
+            topic_clusters=clusters,
+            edges=edges,
+        )
+        save_graph_artifact(graph)
+
+        session.status = SessionStatus.graph_ready
+        session.error_message = None
+        session.stats.document_count = sum(1 for source in session.source_files if source.kind.value == "pdf")
+        session.stats.audio_count = sum(1 for source in session.source_files if source.kind.value == "audio")
+        session.stats.chunk_count = len(chunks)
+        session.stats.concept_count = len(concepts)
+        session.stats.relation_count = len(edges)
+        session.stats.cluster_count = len(clusters)
+        session.updated_at = graph.built_at
+        save_session(session)
+        return graph
+    except Exception as exc:
+        session.status = SessionStatus.failed
+        session.error_message = str(exc)
+        session.updated_at = datetime.utcnow()
+        save_session(session)
+        raise
+
+
+def _extract_graph_structure(chunks: list[EvidenceChunk]) -> tuple[list[ConceptNode], list[GraphEdge]]:
+    if llm_graph_configured():
+        try:
+            extracted = extract_graph_candidates(chunks)
+            concepts = _build_concepts_from_llm(chunks, extracted)
+            if concepts:
+                return concepts, _build_edges_from_llm(chunks, concepts, extracted)
+            if settings.graph_llm_strict:
+                raise RuntimeError("LLM graph extraction returned no valid concepts after cleaning.")
+            logger.warning("LLM graph extraction returned no valid concepts, falling back to rules.")
+        except Exception as exc:
+            logger.exception("LLM graph extraction failed.")
+            if settings.graph_llm_strict:
+                raise RuntimeError(f"LLM graph extraction failed: {exc}") from exc
+            logger.warning("Falling back to rule-based graph extraction after LLM failure.")
 
     concepts = _build_concepts(chunks)
-    edges = _build_edges(chunks, concepts)
-    _assign_importance_scores(concepts, edges)
-    clusters = _build_clusters(concepts, edges)
-    graph = GraphArtifact(
-        session_id=session_id,
-        concepts=concepts,
-        topic_clusters=clusters,
-        edges=edges,
-    )
-    save_graph_artifact(graph)
+    return concepts, _build_edges(chunks, concepts)
 
-    session.status = SessionStatus.graph_ready
-    session.stats.document_count = sum(1 for source in session.source_files if source.kind.value == "pdf")
-    session.stats.audio_count = sum(1 for source in session.source_files if source.kind.value == "audio")
-    session.stats.chunk_count = len(chunks)
-    session.stats.concept_count = len(concepts)
-    session.stats.relation_count = len(edges)
-    session.stats.cluster_count = len(clusters)
-    save_session(session)
-    return graph
+
+def _build_concepts_from_llm(
+    chunks: list[EvidenceChunk],
+    extracted: GraphExtractionResult,
+) -> list[ConceptNode]:
+    if not extracted.concepts:
+        return []
+
+    chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+    concepts: list[ConceptNode] = []
+
+    for candidate in extracted.concepts:
+        aliases = sorted(
+            {
+                alias
+                for alias in [candidate.name, candidate.canonical_name, *candidate.aliases]
+                if alias.strip()
+            }
+        )
+        evidence_refs = _resolve_candidate_evidence_refs(
+            chunk_by_id=chunk_by_id,
+            evidence_chunk_ids=candidate.evidence_chunk_ids,
+            lookup_terms=aliases or [candidate.name],
+            term=candidate.canonical_name or candidate.name,
+        )
+        if not evidence_refs:
+            continue
+
+        definition = candidate.definition.strip()
+        if not definition:
+            snippets = " ".join(ref.snippet for ref in evidence_refs)
+            definition = summarize_text(snippets, max_sentences=1, max_chars=150)
+
+        source_count = len({ref.source_id for ref in evidence_refs})
+        canonical_name = canonicalize_term(candidate.canonical_name or candidate.name)
+        concepts.append(
+            ConceptNode(
+                concept_id=f"concept:{canonical_name}",
+                name=candidate.name,
+                canonical_name=canonical_name,
+                aliases=aliases[:10],
+                definition=definition,
+                embedding=hash_embedding(" ".join([candidate.name, canonical_name, definition, *aliases])),
+                importance_score=0.0,
+                source_count=source_count,
+                evidence_refs=evidence_refs[:6],
+            )
+        )
+
+    return concepts
+
+
+def _build_edges_from_llm(
+    chunks: list[EvidenceChunk],
+    concepts: list[ConceptNode],
+    extracted: GraphExtractionResult,
+) -> list[GraphEdge]:
+    concept_by_canonical = {concept.canonical_name: concept for concept in concepts}
+    relation_edges: list[GraphEdge] = []
+    existing_edge_keys: set[tuple[str, str, EdgeType, str | None]] = set()
+
+    for relation in extracted.relations:
+        source = concept_by_canonical.get(canonicalize_term(relation.source_canonical_name))
+        target = concept_by_canonical.get(canonicalize_term(relation.target_canonical_name))
+        if source is None or target is None or source.concept_id == target.concept_id:
+            continue
+
+        if relation.edge_type == EdgeType.relates_to.value and relation.relation_type:
+            relation_type = RelationType(relation.relation_type)
+            edge = GraphEdge(
+                source=source.concept_id,
+                target=target.concept_id,
+                edge_type=EdgeType.relates_to,
+                properties={
+                    "relation_type": relation_type.value,
+                    "confidence": round(max(relation.confidence, 0.45), 2),
+                    "evidence_count": max(1, len(relation.evidence_chunk_ids)),
+                },
+            )
+            relation_edges.append(edge)
+            existing_edge_keys.add((edge.source, edge.target, edge.edge_type, relation_type.value))
+        elif relation.edge_type == EdgeType.co_occurs_with.value:
+            cooccur_count = max(1, len(relation.evidence_chunk_ids))
+            edge = GraphEdge(
+                source=source.concept_id,
+                target=target.concept_id,
+                edge_type=EdgeType.co_occurs_with,
+                properties={
+                    "cooccur_count": cooccur_count,
+                    "doc_count": min(source.source_count, target.source_count),
+                    "normalized_weight": round(min(1.0, 0.25 + cooccur_count * 0.15), 3),
+                },
+            )
+            relation_edges.append(edge)
+            existing_edge_keys.add((edge.source, edge.target, edge.edge_type, None))
+
+    if relation_edges:
+        return relation_edges
+
+    concept_terms = {
+        concept.concept_id: set(concept.aliases + [concept.name, concept.canonical_name])
+        for concept in concepts
+    }
+    cooccur_counts: Counter[tuple[str, str]] = Counter()
+    for chunk in chunks:
+        mentioned = _mentioned_concepts(chunk, concept_terms)
+        for left, right in itertools.combinations(sorted(mentioned), 2):
+            cooccur_counts[(left, right)] += 1
+
+    for (left, right), count in cooccur_counts.items():
+        left_concept = next(concept for concept in concepts if concept.concept_id == left)
+        right_concept = next(concept for concept in concepts if concept.concept_id == right)
+        cooccur_key = (left, right, EdgeType.co_occurs_with, None)
+        if cooccur_key not in existing_edge_keys and (
+            count >= 2 or _is_semantically_close(left_concept, right_concept)
+        ):
+            relation_edges.append(
+                GraphEdge(
+                    source=left,
+                    target=right,
+                    edge_type=EdgeType.co_occurs_with,
+                    properties={
+                        "cooccur_count": count,
+                        "doc_count": min(left_concept.source_count, right_concept.source_count),
+                        "normalized_weight": round(min(1.0, 0.2 + count * 0.15), 3),
+                    },
+                )
+            )
+            existing_edge_keys.add(cooccur_key)
+
+        relates_key = (left, right, EdgeType.relates_to, RelationType.similar_to.value)
+        has_explicit_relation = any(
+            item[0] == left and item[1] == right and item[2] == EdgeType.relates_to
+            for item in existing_edge_keys
+        )
+        if not has_explicit_relation and count >= 2:
+            relation_edges.append(
+                GraphEdge(
+                    source=left,
+                    target=right,
+                    edge_type=EdgeType.relates_to,
+                    properties={
+                        "relation_type": RelationType.similar_to.value,
+                        "confidence": round(0.45 + min(0.35, count * 0.08), 2),
+                        "evidence_count": count,
+                    },
+                )
+            )
+            existing_edge_keys.add(relates_key)
+
+    return relation_edges
+
+
+def _resolve_candidate_evidence_refs(
+    *,
+    chunk_by_id: dict[str, EvidenceChunk],
+    evidence_chunk_ids: list[str],
+    lookup_terms: list[str],
+    term: str,
+) -> list[EvidenceRef]:
+    refs: list[EvidenceRef] = []
+    seen: set[str] = set()
+
+    for chunk_id in evidence_chunk_ids:
+        chunk = chunk_by_id.get(chunk_id)
+        if chunk is None or chunk.chunk_id in seen:
+            continue
+        seen.add(chunk.chunk_id)
+        refs.append(_chunk_to_ref(chunk, term))
+
+    if refs:
+        return refs
+
+    lowered_terms = [item.lower() for item in lookup_terms if item]
+    for chunk in chunk_by_id.values():
+        text = chunk.text.lower()
+        if not any(alias in text for alias in lowered_terms):
+            continue
+        refs.append(_chunk_to_ref(chunk, term))
+        if len(refs) >= 4:
+            break
+
+    return refs
 
 
 def _build_concepts(chunks: list[EvidenceChunk]) -> list[ConceptNode]:

@@ -1,105 +1,260 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getGraph } from "../../api/client";
-import type { ConceptNode } from "../../types";
-import { Drawer } from "../primitives/Drawer";
+import type { ConceptNode, GraphArtifact } from "../../types";
+import "./ConceptDrawer.css";
 
-export function ConceptDrawer({ sessionId }: { sessionId: string }) {
+const CLUSTER_COLORS = [
+  "var(--accent)",
+  "var(--info)",
+  "var(--warn)",
+  "var(--ok)",
+  "var(--err)",
+];
+
+interface ConceptDrawerProps {
+  sessionId: string;
+}
+
+function SkeletonCard() {
+  return (
+    <div className="cd-card">
+      <div className="cd-skeleton-line" style={{ width: "60%", height: 20, marginBottom: 12 }} />
+      <div className="cd-skeleton-line" style={{ width: "100%" }} />
+      <div className="cd-skeleton-line" style={{ width: "80%" }} />
+      <div className="cd-skeleton-line" style={{ width: "90%" }} />
+    </div>
+  );
+}
+
+export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const conceptId = searchParams.get("concept");
   const [concept, setConcept] = useState<ConceptNode | null>(null);
+  const [artifact, setArtifact] = useState<GraphArtifact | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showAllEvidence, setShowAllEvidence] = useState(false);
 
   useEffect(() => {
-    if (!conceptId) { setConcept(null); return; }
-    getGraph(sessionId).then((artifact) => {
-      const c = artifact.concepts.find((c) => c.concept_id === conceptId);
-      setConcept(c ?? null);
-    }).catch(() => setConcept(null));
+    if (!conceptId) {
+      setConcept(null);
+      setArtifact(null);
+      return;
+    }
+    setLoading(true);
+    setShowAllEvidence(false);
+    getGraph(sessionId)
+      .then((art) => {
+        setArtifact(art);
+        const c = art.concepts.find((c) => c.concept_id === conceptId);
+        setConcept(c ?? null);
+      })
+      .catch(() => { setConcept(null); setArtifact(null); })
+      .finally(() => setLoading(false));
   }, [sessionId, conceptId]);
 
   function close() {
     setSearchParams({});
   }
 
+  if (!conceptId) return null;
+
+  // Find cluster for this concept
+  const clusterIndex = artifact?.topic_clusters.findIndex((cl) =>
+    cl.concept_ids.includes(conceptId ?? ""),
+  ) ?? -1;
+  const heroColor = clusterIndex >= 0 ? CLUSTER_COLORS[clusterIndex % CLUSTER_COLORS.length] : "var(--accent)";
+
+  // Find neighbors from edges
+  const outNeighbors: Array<{ id: string; name: string; type: string }> = [];
+  const inNeighbors: Array<{ id: string; name: string; type: string }> = [];
+  if (artifact && concept) {
+    for (const edge of artifact.edges) {
+      if (edge.source === conceptId) {
+        const target = artifact.concepts.find((c) => c.concept_id === edge.target);
+        if (target) outNeighbors.push({ id: target.concept_id, name: target.name, type: edge.edge_type });
+      } else if (edge.target === conceptId) {
+        const source = artifact.concepts.find((c) => c.concept_id === edge.source);
+        if (source) inNeighbors.push({ id: source.concept_id, name: source.name, type: edge.edge_type });
+      }
+    }
+  }
+
+  const evidenceToShow = showAllEvidence
+    ? (concept?.evidence_refs ?? [])
+    : (concept?.evidence_refs ?? []).slice(0, 3);
+
   return (
-    <Drawer
-      open={!!conceptId}
-      title={concept?.name ?? "知识点详情"}
-      onClose={close}
-    >
-      {concept ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", fontFamily: "var(--font-ui)", fontSize: 14 }}>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--control-text-color)", marginBottom: 4 }}>规范名称</div>
-            <div style={{ fontWeight: 600, color: "var(--heading-color)" }}>{concept.canonical_name}</div>
-          </div>
+    <div className="concept-drawer">
+      <button className="cd-close" onClick={close} type="button" aria-label="关闭">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </button>
 
-          {concept.aliases.length > 0 && (
-            <div>
-              <div style={{ fontSize: 12, color: "var(--control-text-color)", marginBottom: 4 }}>别名</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {concept.aliases.map((a) => (
-                  <span key={a} style={{
-                    background: "var(--side-bar-bg-color)",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "var(--radius-pill)",
-                    padding: "2px 10px",
-                    fontSize: 12,
-                    color: "var(--text-color)",
-                  }}>{a}</span>
-                ))}
+      <div className="cd-scroll">
+        {loading && <SkeletonCard />}
+
+        {!loading && concept && (
+          <>
+            {/* Hero card */}
+            <div
+              className="cd-card cd-hero"
+              style={{
+                "--hero-color": heroColor,
+                borderColor: `color-mix(in oklab, ${heroColor} 25%, var(--rule))`,
+                background: `linear-gradient(135deg, color-mix(in oklab, ${heroColor} 22%, var(--panel)) 0%, color-mix(in oklab, ${heroColor} 10%, var(--panel)) 60%, var(--panel) 100%)`,
+              } as React.CSSProperties}
+            >
+              <div className="cd-hero-meta">
+                {clusterIndex >= 0 && (
+                  <span className="cd-hero-tag">
+                    <span className="cd-hero-tag-dot" style={{ background: heroColor }} />
+                    {artifact?.topic_clusters[clusterIndex]?.title}
+                  </span>
+                )}
+                <span className="cd-hero-imp">
+                  重要性 {(concept.importance_score * 100).toFixed(0)}%
+                </span>
+              </div>
+              <div className="cd-hero-title">{concept.name}</div>
+              {concept.aliases.length > 0 && (
+                <div className="cd-hero-aliases">
+                  {concept.aliases.map((a) => (
+                    <span key={a} className="cd-hero-alias">{a}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Stats card */}
+            <div className="cd-card cd-stats-card">
+              <div className="cd-stat">
+                <div className="cd-stat-num">{concept.source_count}</div>
+                <div className="cd-stat-label">来源</div>
+              </div>
+              <div className="cd-stat-div" />
+              <div className="cd-stat">
+                <div className="cd-stat-num">{concept.evidence_refs.length}</div>
+                <div className="cd-stat-label">证据</div>
+              </div>
+              <div className="cd-stat-div" />
+              <div className="cd-stat">
+                <div className="cd-stat-num">{outNeighbors.length + inNeighbors.length}</div>
+                <div className="cd-stat-label">关系</div>
               </div>
             </div>
-          )}
 
-          <div>
-            <div style={{ fontSize: 12, color: "var(--control-text-color)", marginBottom: 6 }}>重要性</div>
-            <div style={{ height: 6, background: "var(--side-bar-bg-color)", borderRadius: "var(--radius-pill)", overflow: "hidden" }}>
-              <div style={{
-                height: "100%",
-                width: `${Math.min(100, concept.importance_score * 100).toFixed(1)}%`,
-                background: "var(--accent-color)",
-                borderRadius: "var(--radius-pill)",
-                transition: "width 0.4s var(--ease)",
-              }} />
-            </div>
-          </div>
-
-          {concept.definition && (
-            <div>
-              <div style={{ fontSize: 12, color: "var(--control-text-color)", marginBottom: 4 }}>定义</div>
-              <p style={{ margin: 0, lineHeight: 1.6, color: "var(--text-color)" }}>{concept.definition}</p>
-            </div>
-          )}
-
-          {concept.evidence_refs.length > 0 && (
-            <div>
-              <div style={{ fontSize: 12, color: "var(--control-text-color)", marginBottom: 8 }}>
-                证据来源 ({concept.evidence_refs.length})
+            {/* Definition */}
+            {concept.definition && (
+              <div className="cd-card">
+                <div className="cd-card-label">
+                  <span className="cd-label-bar" />
+                  定义
+                </div>
+                <p className="cd-defn-text">{concept.definition}</p>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {concept.evidence_refs.slice(0, 5).map((ref) => (
-                  <div key={ref.chunk_id} style={{
-                    background: "var(--window-bg-color)",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "8px 12px",
-                  }}>
-                    <div style={{ fontSize: 12, color: "var(--control-text-color)", marginBottom: 4 }}>
-                      {ref.source_type === "pdf" ? `PDF · ${ref.locator}` : `音频 · ${ref.locator}`}
+            )}
+
+            {/* Evidence */}
+            {concept.evidence_refs.length > 0 && (
+              <div className="cd-card">
+                <div className="cd-card-label">
+                  <span className="cd-label-bar" />
+                  证据来源
+                  <span className="cd-label-count">{concept.evidence_refs.length}</span>
+                </div>
+                <div className="cd-evidence">
+                  {evidenceToShow.map((ref) => (
+                    <div key={ref.chunk_id} className="cd-evidence-item">
+                      <div className="cd-evidence-head">
+                        <span>{ref.source_type === "pdf" ? "PDF" : "音频"}</span>
+                        <span className="cd-evi-loc">{ref.locator}</span>
+                      </div>
+                      <div className="cd-evidence-snip">{ref.snippet}</div>
                     </div>
-                    <div style={{ fontSize: 13, color: "var(--text-color)", lineHeight: 1.5 }}>
-                      {ref.snippet}
-                    </div>
+                  ))}
+                </div>
+                {concept.evidence_refs.length > 3 && !showAllEvidence && (
+                  <button
+                    className="cd-expand-btn"
+                    onClick={() => setShowAllEvidence(true)}
+                    type="button"
+                    style={{ marginTop: 8 }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                    查看全部 {concept.evidence_refs.length} 条证据
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Neighbors */}
+            {(outNeighbors.length > 0 || inNeighbors.length > 0) && (
+              <div className="cd-card">
+                <div className="cd-card-label">
+                  <span className="cd-label-bar" />
+                  关联概念
+                  <span className="cd-label-count">{outNeighbors.length + inNeighbors.length}</span>
+                </div>
+
+                {outNeighbors.length > 0 && (
+                  <div className="cd-neighbor-group">
+                    <div className="cd-neighbor-group-label">指向</div>
+                    {outNeighbors.slice(0, 6).map((n) => (
+                      <NeighborRow
+                        key={n.id}
+                        name={n.name}
+                        type={n.type}
+                        onClick={() => setSearchParams({ concept: n.id })}
+                      />
+                    ))}
                   </div>
-                ))}
+                )}
+
+                {inNeighbors.length > 0 && (
+                  <div className="cd-neighbor-group">
+                    <div className="cd-neighbor-group-label">被指向</div>
+                    {inNeighbors.slice(0, 6).map((n) => (
+                      <NeighborRow
+                        key={n.id}
+                        name={n.name}
+                        type={n.type}
+                        onClick={() => setSearchParams({ concept: n.id })}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <p style={{ fontFamily: "var(--font-ui)", color: "var(--control-text-color)", fontSize: 14 }}>加载中…</p>
-      )}
-    </Drawer>
+            )}
+          </>
+        )}
+
+        {!loading && !concept && conceptId && (
+          <div className="cd-card" style={{ color: "var(--ink-3)", fontFamily: "var(--font-ui)", fontSize: 14 }}>
+            未找到概念数据
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NeighborRow({ name, type, onClick }: { name: string; type: string; onClick: () => void }) {
+  const typeLabel: Record<string, string> = {
+    RELATES_TO: "相关",
+    CO_OCCURS_WITH: "共现",
+    CONTAINS: "包含",
+    MENTIONS: "提及",
+  };
+  return (
+    <div className="cd-neighbor-row" onClick={onClick} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onClick()}>
+      <span className="cd-neighbor-name">{name}</span>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-4)" }}>
+        {typeLabel[type] ?? type}
+      </span>
+    </div>
   );
 }

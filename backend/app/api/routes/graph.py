@@ -18,6 +18,11 @@ router = APIRouter(tags=["graph"])
 async def ingest_pdf(request: IngestRequest):
     try:
         artifact = ingest_source(request.session_id, request.source_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Session not found.") from exc
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return artifact.model_dump(mode="json")
@@ -27,6 +32,11 @@ async def ingest_pdf(request: IngestRequest):
 async def ingest_audio(request: IngestRequest):
     try:
         artifact = ingest_source(request.session_id, request.source_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Session not found.") from exc
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return artifact.model_dump(mode="json")
@@ -36,6 +46,10 @@ async def ingest_audio(request: IngestRequest):
 async def build_graph_endpoint(request: BuildGraphRequest):
     try:
         graph = build_graph(request.session_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Session not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
@@ -74,6 +88,10 @@ async def subgraph_endpoint(
 async def generate_notes_endpoint(request: GenerateNotesRequest):
     try:
         note = generate_notes(request)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Graph or session not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return note.model_dump(mode="json")

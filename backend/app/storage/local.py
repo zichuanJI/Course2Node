@@ -109,6 +109,10 @@ def load_graph_artifact(session_id: uuid.UUID) -> GraphArtifact:
     return _read_model(graph_path(session_id), GraphArtifact)
 
 
+def delete_graph_artifact(session_id: uuid.UUID) -> None:
+    graph_path(session_id).unlink(missing_ok=True)
+
+
 def notes_path(session_id: uuid.UUID) -> Path:
     return session_dir(session_id) / "notes.json"
 
@@ -119,6 +123,10 @@ def save_note(note: NoteDocument) -> Path:
 
 def load_note(session_id: uuid.UUID) -> NoteDocument:
     return _read_model(notes_path(session_id), NoteDocument)
+
+
+def delete_note(session_id: uuid.UUID) -> None:
+    notes_path(session_id).unlink(missing_ok=True)
 
 
 def write_json(path: Path, data: dict) -> Path:

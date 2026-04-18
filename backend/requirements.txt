@@ -10,7 +10,9 @@ pydantic-settings==2.7.0
 # Ingestion
 openai-whisper==20240930
 pymupdf==1.25.1
+openai>=1.0.0,<2.0.0
 
 # Dev / test
 pytest==8.3.4
 httpx==0.28.1
+socksio==1.0.0

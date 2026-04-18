@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.core.types import CourseSession, SessionStatus, SourceFile, SourceKind, UploadResponse
 from app.services.graph_builder import build_graph
 from app.services.ingestion import ingest_source
-from app.storage.local import load_session, save_session, write_upload
+from app.storage.local import delete_graph_artifact, delete_note, load_session, save_session, write_upload
 
 ALLOWED_PDF = {"application/pdf"}
 ALLOWED_AUDIO = {
     "audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/ogg", "audio/webm", "audio/m4a",
 }
+ALLOWED_PDF_EXTENSIONS = {".pdf"}
+ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".mp4", ".wav", ".ogg", ".webm", ".m4a"}
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -71,14 +74,13 @@ async def upload_pdfs(
 
     source_ids: list[str] = []
     for upload in files:
-        if upload.content_type not in ALLOWED_PDF:
-            raise HTTPException(status_code=415, detail=f"Unsupported content type: {upload.content_type}")
+        content_type = _validated_content_type(upload, ALLOWED_PDF, ALLOWED_PDF_EXTENSIONS)
         data = await upload.read()
         storage_path = write_upload(session.session_id, upload.filename, data)
         source = SourceFile(
             kind=SourceKind.pdf,
             filename=upload.filename,
-            content_type=upload.content_type or "application/octet-stream",
+            content_type=content_type,
             storage_path=str(storage_path),
             size_bytes=len(data),
             uploaded_at=datetime.utcnow(),
@@ -86,22 +88,26 @@ async def upload_pdfs(
         session.source_files.append(source)
         source_ids.append(str(source.source_id))
 
-    session.status = SessionStatus.uploaded
-    session.updated_at = datetime.utcnow()
+    _mark_session_for_rebuild(session)
     save_session(session)
 
     if auto_ingest_and_build:
-        for source in session.source_files:
-            ingest_source(session.session_id, source.source_id)
-        graph = build_graph(session.session_id)
-        return {
-            "session_id": str(session.session_id),
-            "source_ids": source_ids,
-            "concept_count": len(graph.concepts),
-            "edge_count": len(graph.edges),
-            "cluster_count": len(graph.topic_clusters),
-            "status": "graph_ready",
-        }
+        try:
+            for source in session.source_files:
+                ingest_source(session.session_id, source.source_id)
+            graph = build_graph(session.session_id)
+            return {
+                "session_id": str(session.session_id),
+                "source_ids": source_ids,
+                "concept_count": len(graph.concepts),
+                "edge_count": len(graph.edges),
+                "cluster_count": len(graph.topic_clusters),
+                "status": "graph_ready",
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {
         "session_id": str(session.session_id),
@@ -118,8 +124,8 @@ async def _upload_source(
     lecture_title: str | None,
     allowed_types: set[str],
 ) -> UploadResponse:
-    if upload.content_type not in allowed_types:
-        raise HTTPException(status_code=415, detail=f"Unsupported content type: {upload.content_type}")
+    allowed_extensions = ALLOWED_PDF_EXTENSIONS if kind == SourceKind.pdf else ALLOWED_AUDIO_EXTENSIONS
+    content_type = _validated_content_type(upload, allowed_types, allowed_extensions)
 
     session = _resolve_session(session_id, course_title, lecture_title)
     data = await upload.read()
@@ -128,14 +134,13 @@ async def _upload_source(
     source = SourceFile(
         kind=kind,
         filename=upload.filename,
-        content_type=upload.content_type or "application/octet-stream",
+        content_type=content_type,
         storage_path=str(storage_path),
         size_bytes=len(data),
         uploaded_at=datetime.utcnow(),
     )
     session.source_files.append(source)
-    session.status = SessionStatus.uploaded
-    session.updated_at = datetime.utcnow()
+    _mark_session_for_rebuild(session)
     save_session(session)
 
     return UploadResponse(
@@ -170,3 +175,31 @@ def _resolve_session(
     )
     save_session(session)
     return session
+
+
+def _validated_content_type(
+    upload: UploadFile,
+    allowed_types: set[str],
+    allowed_extensions: set[str],
+) -> str:
+    content_type = (upload.content_type or "").lower()
+    suffix = Path(upload.filename or "").suffix.lower()
+    if content_type in allowed_types:
+        return content_type
+    if suffix in allowed_extensions:
+        return content_type or "application/octet-stream"
+    raise HTTPException(status_code=415, detail=f"Unsupported content type: {upload.content_type}")
+
+
+def _mark_session_for_rebuild(session: CourseSession) -> None:
+    delete_graph_artifact(session.session_id)
+    delete_note(session.session_id)
+    session.status = SessionStatus.uploaded
+    session.error_message = None
+    session.updated_at = datetime.utcnow()
+    session.stats.document_count = sum(1 for source in session.source_files if source.kind == SourceKind.pdf)
+    session.stats.audio_count = sum(1 for source in session.source_files if source.kind == SourceKind.audio)
+    session.stats.chunk_count = 0
+    session.stats.concept_count = 0
+    session.stats.relation_count = 0
+    session.stats.cluster_count = 0

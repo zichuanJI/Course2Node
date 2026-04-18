@@ -1,9 +1,12 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(ROOT_DIR / ".env"), extra="ignore")
 
     # Database
     database_url: str = "postgresql+asyncpg://course2note:course2note@localhost:5432/course2note"
@@ -15,7 +18,7 @@ class Settings(BaseSettings):
 
     # Storage
     storage_backend: str = "local"
-    local_storage_path: str = str(Path(__file__).resolve().parents[2] / "artifacts")
+    local_storage_path: str = str(ROOT_DIR / "artifacts")
 
     # LLM
     synthesize_llm_provider: str = "claude"  # claude | gemini
@@ -24,6 +27,14 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     minimax_api_key: str = ""
     minimax_group_id: str = ""
+    graph_llm_base_url: str = ""
+    graph_llm_api_key: str = ""
+    graph_llm_model: str = ""
+    graph_llm_timeout_seconds: float = 60.0
+    graph_llm_batch_max_chars: int = 12000
+    graph_llm_batch_max_chunks: int = 24
+    graph_llm_max_input_units: int = 14
+    graph_llm_strict: bool = True
 
     # Embed
     embed_provider: str = "openai"  # openai | gemini
@@ -33,6 +44,12 @@ class Settings(BaseSettings):
     whisper_language: str = "auto"
     faster_whisper_python_path: str = "/Users/zicheng/Documents/Playground/2026.3.13 Video-Note-Tool/.venv/bin/python"
     faster_whisper_runner_path: str = str(Path(__file__).resolve().parent / "services" / "faster_whisper_runner.py")
+    pdf_visual_fallback_min_chars: int = 80
+    pdf_visual_fallback_max_pages: int = 6
+    pdf_vision_base_url: str = ""
+    pdf_vision_api_key: str = ""
+    pdf_vision_model: str = ""
+    pdf_vision_timeout_seconds: float = 60.0
 
     # Search
     search_provider: str = "tavily"  # tavily | bing

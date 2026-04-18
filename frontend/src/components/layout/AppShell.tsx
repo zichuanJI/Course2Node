@@ -2,10 +2,16 @@ import { type ReactNode } from "react";
 import { TopBar } from "./TopBar";
 import "./AppShell.css";
 
-export function AppShell({ children, topBarActions }: { children: ReactNode; topBarActions?: ReactNode }) {
+interface AppShellProps {
+  children: ReactNode;
+  onOpenCmd?: () => void;
+  onOpenTweaks?: () => void;
+}
+
+export function AppShell({ children, onOpenCmd, onOpenTweaks }: AppShellProps) {
   return (
     <div className="app-shell">
-      <TopBar actions={topBarActions} />
+      <TopBar onOpenCmd={onOpenCmd} onOpenTweaks={onOpenTweaks} />
       <main className="app-shell-content">{children}</main>
     </div>
   );

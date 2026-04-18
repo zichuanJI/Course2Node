@@ -5,12 +5,14 @@ import os
 import subprocess
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from app.config import settings
 from app.core.types import CourseSession, EvidenceChunk, IngestArtifact, SessionStatus, SourceFile, SourceKind
-from app.services.text_utils import extract_candidate_terms, hash_embedding, split_text, summarize_text
-from app.storage.local import load_session, save_ingest_artifact, save_session
+from app.services.llm_graph import extract_text_from_page_image, pdf_visual_fallback_configured
+from app.services.text_utils import extract_candidate_terms, hash_embedding, normalize_text, split_text, summarize_text
+from app.storage.local import list_ingest_artifacts, load_session, save_ingest_artifact, save_session
 
 
 def ingest_source(session_id: uuid.UUID, source_id: uuid.UUID) -> IngestArtifact:
@@ -19,27 +21,42 @@ def ingest_source(session_id: uuid.UUID, source_id: uuid.UUID) -> IngestArtifact
     session.status = SessionStatus.ingesting
     save_session(session)
 
-    if source.kind == SourceKind.pdf:
-        chunks = _ingest_pdf(source)
-    elif source.kind == SourceKind.audio:
-        chunks = _ingest_audio(source)
-    else:
-        raise ValueError(f"Unsupported source kind: {source.kind}")
+    try:
+        if source.kind == SourceKind.pdf:
+            chunks = _ingest_pdf(source)
+        elif source.kind == SourceKind.audio:
+            chunks = _ingest_audio(source)
+        else:
+            raise ValueError(f"Unsupported source kind: {source.kind}")
 
-    artifact = IngestArtifact(
-        session_id=session_id,
-        source_id=source_id,
-        source_kind=source.kind,
-        chunks=chunks,
-    )
-    path = save_ingest_artifact(artifact)
+        artifact = IngestArtifact(
+            session_id=session_id,
+            source_id=source_id,
+            source_kind=source.kind,
+            chunks=chunks,
+        )
+        path = save_ingest_artifact(artifact)
 
-    source.ingested = True
-    source.ingest_artifact_path = str(path)
-    session.status = SessionStatus.uploaded
-    session.updated_at = artifact.created_at
-    save_session(session)
-    return artifact
+        source.ingested = True
+        source.ingest_artifact_path = str(path)
+        session.status = SessionStatus.uploaded
+        session.error_message = None
+        session.updated_at = artifact.created_at
+        artifacts = list_ingest_artifacts(session_id)
+        session.stats.document_count = sum(1 for item in session.source_files if item.kind == SourceKind.pdf)
+        session.stats.audio_count = sum(1 for item in session.source_files if item.kind == SourceKind.audio)
+        session.stats.chunk_count = sum(len(item.chunks) for item in artifacts)
+        session.stats.concept_count = 0
+        session.stats.relation_count = 0
+        session.stats.cluster_count = 0
+        save_session(session)
+        return artifact
+    except Exception as exc:
+        session.status = SessionStatus.failed
+        session.error_message = str(exc)
+        session.updated_at = datetime.utcnow()
+        save_session(session)
+        raise
 
 
 def _find_source(session: CourseSession, source_id: uuid.UUID) -> SourceFile:
@@ -57,8 +74,11 @@ def _ingest_pdf(source: SourceFile) -> list[EvidenceChunk]:
 
     document = fitz.open(source.storage_path)
     chunks: list[EvidenceChunk] = []
+    fallback_pages_used = 0
     for page_index, page in enumerate(document, start=1):
-        page_text = page.get_text("text")
+        page_text, used_fallback = _extract_pdf_page_text(page, page_index, source.filename, fallback_pages_used)
+        if used_fallback:
+            fallback_pages_used += 1
         for local_index, piece in enumerate(split_text(page_text), start=1):
             if not piece.strip():
                 continue
@@ -77,6 +97,41 @@ def _ingest_pdf(source: SourceFile) -> list[EvidenceChunk]:
                 )
             )
     return chunks
+
+
+def _extract_pdf_page_text(page, page_index: int, filename: str, fallback_pages_used: int) -> tuple[str, bool]:
+    page_text = normalize_text(page.get_text("text"))
+    if not _should_attempt_visual_fallback(page_text):
+        return page_text, False
+    if fallback_pages_used >= settings.pdf_visual_fallback_max_pages:
+        return page_text, False
+    if not pdf_visual_fallback_configured():
+        return page_text, False
+    fallback_text = _extract_pdf_page_with_vision(page, page_index, filename)
+    if fallback_text:
+        return fallback_text, True
+    return page_text, False
+
+
+def _extract_pdf_page_with_vision(page, page_index: int, filename: str) -> str:
+    pixmap = page.get_pixmap(alpha=False)
+    image_bytes = pixmap.tobytes("png")
+    try:
+        return extract_text_from_page_image(
+            image_bytes,
+            filename=filename,
+            page_index=page_index,
+        )
+    except Exception:
+        return ""
+
+
+def _should_attempt_visual_fallback(page_text: str) -> bool:
+    stripped = normalize_text(page_text)
+    if len(stripped) >= settings.pdf_visual_fallback_min_chars:
+        return False
+    alpha_chars = sum(char.isalpha() or "\u4e00" <= char <= "\u9fff" for char in stripped)
+    return alpha_chars < max(20, settings.pdf_visual_fallback_min_chars // 2)
 
 
 def _ingest_audio(source: SourceFile) -> list[EvidenceChunk]:
