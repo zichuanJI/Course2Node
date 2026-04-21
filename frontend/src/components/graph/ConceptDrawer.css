@@ -188,6 +188,21 @@
   margin: 0;
 }
 
+.cd-bullet-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--ink-2);
+  font-family: var(--font-serif);
+  font-size: 14px;
+  line-height: 1.58;
+}
+
+.cd-mini-section + .cd-mini-section {
+  margin-top: 14px;
+}
+
 /* Stats card */
 .cd-stats-card {
   display: flex;

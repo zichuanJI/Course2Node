@@ -115,7 +115,7 @@ export function HomePage() {
   }, [filtered]);
 
   const totalConcepts = sessions.reduce((a, s) => a + (s.stats?.concept_count ?? 0), 0);
-  const readyCount = sessions.filter((s) => s.status === "notes_ready" || s.status === "graph_ready").length;
+  const totalRelations = sessions.reduce((a, s) => a + (s.stats?.relation_count ?? 0), 0);
 
   return (
     <div className="page">
@@ -127,7 +127,7 @@ export function HomePage() {
             我的课程 / <em>notes</em>
           </h1>
           <p className="home-sub">
-            {sessions.length} 节课程 · {readyCount} 已就绪 · {totalConcepts.toLocaleString()} 概念节点
+            {sessions.length} 节课 · 累计 <b>{totalConcepts.toLocaleString()}</b> 个知识点，<b>{totalRelations.toLocaleString()}</b> 条关系
           </p>
         </div>
         <button

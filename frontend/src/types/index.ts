@@ -56,6 +56,11 @@ export interface ConceptNode {
   canonical_name: string;
   aliases: string[];
   definition: string;
+  summary: string;
+  key_points: string[];
+  tags: string[];
+  prerequisites: string[];
+  applications: string[];
   embedding: number[];
   importance_score: number;
   source_count: number;

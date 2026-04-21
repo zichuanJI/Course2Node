@@ -45,6 +45,11 @@
   margin-top: 6px;
 }
 
+.home-sub b {
+  color: var(--ink);
+  font-weight: 500;
+}
+
 /* Toolbar */
 .home-toolbar {
   display: flex;

@@ -156,6 +156,75 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
               </div>
             )}
 
+            {concept.summary && (
+              <div className="cd-card">
+                <div className="cd-card-label">
+                  <span className="cd-label-bar" />
+                  概念摘要
+                </div>
+                <p className="cd-defn-text">{concept.summary}</p>
+              </div>
+            )}
+
+            {concept.key_points.length > 0 && (
+              <div className="cd-card">
+                <div className="cd-card-label">
+                  <span className="cd-label-bar" />
+                  关键要点
+                </div>
+                <ul className="cd-bullet-list">
+                  {concept.key_points.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {concept.tags.length > 0 && (
+              <div className="cd-card">
+                <div className="cd-card-label">
+                  <span className="cd-label-bar" />
+                  标签
+                </div>
+                <div className="cd-hero-aliases">
+                  {concept.tags.map((tag) => (
+                    <span key={tag} className="cd-hero-alias">{tag}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(concept.prerequisites.length > 0 || concept.applications.length > 0) && (
+              <div className="cd-card">
+                {concept.prerequisites.length > 0 && (
+                  <div className="cd-mini-section">
+                    <div className="cd-card-label">
+                      <span className="cd-label-bar" />
+                      前置概念
+                    </div>
+                    <ul className="cd-bullet-list">
+                      {concept.prerequisites.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {concept.applications.length > 0 && (
+                  <div className="cd-mini-section">
+                    <div className="cd-card-label">
+                      <span className="cd-label-bar" />
+                      应用场景
+                    </div>
+                    <ul className="cd-bullet-list">
+                      {concept.applications.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Evidence */}
             {concept.evidence_refs.length > 0 && (
               <div className="cd-card">
