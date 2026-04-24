@@ -11,11 +11,6 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://course2note:course2note@localhost:5432/course2note"
 
-    # Redis / Celery
-    redis_url: str = "redis://localhost:6379/0"
-    celery_broker_url: str = "redis://localhost:6379/0"
-    celery_result_backend: str = "redis://localhost:6379/1"
-
     # Storage
     storage_backend: str = "local"
     local_storage_path: str = str(ROOT_DIR / "artifacts")

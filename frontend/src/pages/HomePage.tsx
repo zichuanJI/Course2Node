@@ -36,6 +36,10 @@ function CoverMark({ seed, size = 56 }: { seed: string; size?: number }) {
   );
 }
 
+function TrashIcon() {
+  return <span className="trash-icon" aria-hidden="true" />;
+}
+
 // ── StatusChip ────────────────────────────────────────────────────────────────
 const STATUS_MAP: Record<SessionStatus, { cls: string; label: string }> = {
   draft:       { cls: "chip",       label: "草稿" },
@@ -288,9 +292,7 @@ export function HomePage() {
                   title="删除整个课程"
                   type="button"
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0" />
-                  </svg>
+                  <TrashIcon />
                 </button>
               </div>
               {rows.map((s) => (
@@ -360,9 +362,7 @@ function SessionRow({ session: s, onClick, onDelete }: { session: CourseSession;
         title="删除此讲"
         type="button"
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0" />
-        </svg>
+        <TrashIcon />
       </button>
 
       <svg className="session-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -226,35 +226,79 @@
 }
 
 /* ── Delete buttons ───────────────────────────────────────────────────────── */
-.row-delete-btn {
-  opacity: 0;
-  transition: opacity var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
-  color: var(--ink-4);
-}
-
-.session-row:hover .row-delete-btn {
-  opacity: 1;
-}
-
-.row-delete-btn:hover {
-  color: var(--err) !important;
-  background: color-mix(in oklab, var(--err) 12%, transparent) !important;
+.row-delete-btn,
+.group-delete-btn {
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  color: var(--color-danger, #b04a3a) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  transition: all var(--dur-fast);
 }
 
 .group-delete-btn {
   margin-left: auto;
-  opacity: 0;
-  transition: opacity var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
-  color: var(--ink-4);
 }
 
-.session-group-header:hover .group-delete-btn {
-  opacity: 1;
+.row-delete-btn svg,
+.group-delete-btn svg {
+  display: block;
+  stroke: currentColor;
 }
 
+.trash-icon {
+  display: block;
+  position: relative;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+}
+
+.trash-icon::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  box-shadow: 3px -2px 0 -1px currentColor;
+}
+
+.trash-icon::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid currentColor;
+  border-top: 0;
+  border-radius: 0 0 2.5px 2.5px;
+  background:
+    linear-gradient(currentColor, currentColor) 2px 1px / 1.5px 6px no-repeat,
+    linear-gradient(currentColor, currentColor) 5px 1px / 1.5px 6px no-repeat;
+}
+
+.row-delete-btn:hover,
 .group-delete-btn:hover {
-  color: var(--err) !important;
-  background: color-mix(in oklab, var(--err) 12%, transparent) !important;
+  color: var(--color-danger, #b04a3a) !important;
+  background: rgba(176, 74, 58, 0.10) !important;
+  border-color: rgba(176, 74, 58, 0.18) !important;
+}
+
+.row-delete-btn:focus-visible,
+.group-delete-btn:focus-visible {
+  outline: 2px solid rgba(176, 74, 58, 0.35);
+  outline-offset: 2px;
 }
 
 /* Danger button variant */
