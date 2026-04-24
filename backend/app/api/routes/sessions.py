@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException
 
-from app.storage.local import list_session_ids, load_session
+from app.storage.local import delete_session, list_session_ids, load_session
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -28,6 +28,16 @@ async def get_session(session_id: uuid.UUID):
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Session not found") from exc
     return session.model_dump(mode="json")
+
+
+@router.delete("/{session_id}")
+async def delete_session_endpoint(session_id: uuid.UUID):
+    try:
+        load_session(session_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
+    delete_session(session_id)
+    return {"ok": True}
 
 
 @router.get("/{session_id}/status")

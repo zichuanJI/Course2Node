@@ -147,7 +147,7 @@
 
 .session-group-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   padding: 14px 18px 10px;
   border-bottom: 1px solid var(--rule);
@@ -223,6 +223,85 @@
 
 .session-chevron {
   color: var(--ink-4);
+}
+
+/* ── Delete buttons ───────────────────────────────────────────────────────── */
+.row-delete-btn {
+  opacity: 0;
+  transition: opacity var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
+  color: var(--ink-4);
+}
+
+.session-row:hover .row-delete-btn {
+  opacity: 1;
+}
+
+.row-delete-btn:hover {
+  color: var(--err) !important;
+  background: color-mix(in oklab, var(--err) 12%, transparent) !important;
+}
+
+.group-delete-btn {
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
+  color: var(--ink-4);
+}
+
+.session-group-header:hover .group-delete-btn {
+  opacity: 1;
+}
+
+.group-delete-btn:hover {
+  color: var(--err) !important;
+  background: color-mix(in oklab, var(--err) 12%, transparent) !important;
+}
+
+/* Danger button variant */
+.btn-danger {
+  background: var(--err);
+  color: #fff;
+  border-color: var(--err);
+}
+
+.btn-danger:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+/* Confirm modal */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(2px);
+}
+
+.confirm-dialog {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  max-width: 380px;
+  width: calc(100% - 40px);
+  box-shadow: var(--shadow-3);
+}
+
+.confirm-message {
+  font-family: var(--font-ui);
+  font-size: 14.5px;
+  color: var(--ink-2);
+  margin: 0 0 var(--space-4);
+  line-height: 1.55;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* Empty / loading */

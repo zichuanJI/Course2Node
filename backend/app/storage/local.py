@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import uuid
 from pathlib import Path
 from typing import TypeVar
@@ -57,6 +58,12 @@ def save_session(session: CourseSession) -> Path:
 
 def load_session(session_id: uuid.UUID) -> CourseSession:
     return _read_model(session_path(session_id), CourseSession)
+
+
+def delete_session(session_id: uuid.UUID) -> None:
+    dir_path = _root() / str(session_id)
+    if dir_path.exists():
+        shutil.rmtree(dir_path)
 
 
 def upload_dir(session_id: uuid.UUID) -> Path:

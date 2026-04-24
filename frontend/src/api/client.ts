@@ -150,6 +150,11 @@ export async function getNote(sessionId: string): Promise<NoteDocument> {
   return readJson<NoteDocument>(response);
 }
 
+export async function deleteSession(id: string): Promise<void> {
+  const response = await fetch(`${BASE}/sessions/${id}`, { method: "DELETE" });
+  await readJson<{ ok: boolean }>(response);
+}
+
 export async function exportNote(sessionId: string, fmt: "markdown" | "tex" | "txt"): Promise<string> {
   const response = await fetch(`${BASE}/export/${sessionId}/${fmt}`);
   if (!response.ok) {

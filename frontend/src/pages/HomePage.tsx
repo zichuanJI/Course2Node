@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
-import { listSessions } from "../api/client";
+import { deleteSession, listSessions } from "../api/client";
 import type { CourseSession, SessionStatus } from "../types";
 import { useToast } from "../components/primitives/Toast";
 import "./HomePage.css";
@@ -67,6 +67,42 @@ function matchFilter(status: SessionStatus, filter: FilterGroup): boolean {
   return true;
 }
 
+function sessionHref(session: CourseSession): string {
+  if (session.status === "graph_ready" || session.status === "notes_ready") {
+    return `/session/${session.session_id}`;
+  }
+  return `/session/${session.session_id}/pipeline`;
+}
+
+// ── ConfirmModal ──────────────────────────────────────────────────────────────
+function ConfirmModal({
+  message,
+  onConfirm,
+  onCancel,
+  loading,
+}: {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="confirm-overlay" onClick={() => !loading && onCancel()}>
+      <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+        <p className="confirm-message">{message}</p>
+        <div className="confirm-actions">
+          <button className="btn btn-outline btn-sm" onClick={onCancel} disabled={loading} type="button">
+            取消
+          </button>
+          <button className="btn btn-danger btn-sm" onClick={onConfirm} disabled={loading} type="button">
+            {loading ? "删除中…" : "确认删除"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── HomePage ──────────────────────────────────────────────────────────────────
 export function HomePage() {
   const [sessions, setSessions] = useState<CourseSession[]>([]);
@@ -74,6 +110,8 @@ export function HomePage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<FilterGroup>("all");
   const [courseFilter, setCourseFilter] = useState<string>("all");
+  const [pending, setPending] = useState<{ label: string; onConfirm: () => Promise<void> } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -83,6 +121,43 @@ export function HomePage() {
       .catch(() => toast("加载会话列表失败", "error"))
       .finally(() => setLoading(false));
   }, [toast]);
+
+  const handleDeleteSession = (session: CourseSession) => {
+    setPending({
+      label: `确认删除「${session.lecture_title}」？此操作不可撤销。`,
+      onConfirm: async () => {
+        await deleteSession(session.session_id);
+        setSessions((prev) => prev.filter((s) => s.session_id !== session.session_id));
+        toast("已删除", "success");
+      },
+    });
+  };
+
+  const handleDeleteCourse = (courseTitle: string) => {
+    const count = sessions.filter((s) => s.course_title === courseTitle).length;
+    setPending({
+      label: `确认删除课程「${courseTitle}」中的全部 ${count} 讲？此操作不可撤销。`,
+      onConfirm: async () => {
+        const toDelete = sessions.filter((s) => s.course_title === courseTitle);
+        await Promise.all(toDelete.map((s) => deleteSession(s.session_id)));
+        setSessions((prev) => prev.filter((s) => s.course_title !== courseTitle));
+        toast("课程已删除", "success");
+      },
+    });
+  };
+
+  const confirmDelete = async () => {
+    if (!pending) return;
+    setDeleting(true);
+    try {
+      await pending.onConfirm();
+      setPending(null);
+    } catch {
+      toast("删除失败，请重试", "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const courses = useMemo(() => {
     const seen = new Set<string>();
@@ -206,19 +281,44 @@ export function HomePage() {
                 </svg>
                 <span className="session-group-name">{course}</span>
                 <span className="session-group-count">{rows.length} 讲</span>
+                <button
+                  className="btn btn-icon group-delete-btn"
+                  onClick={(e) => { e.stopPropagation(); handleDeleteCourse(course); }}
+                  aria-label={`删除课程 ${course}`}
+                  title="删除整个课程"
+                  type="button"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0" />
+                  </svg>
+                </button>
               </div>
               {rows.map((s) => (
-                <SessionRow key={s.session_id} session={s} onClick={() => navigate(`/session/${s.session_id}`)} />
+                <SessionRow
+                  key={s.session_id}
+                  session={s}
+                  onClick={() => navigate(sessionHref(s))}
+                  onDelete={() => handleDeleteSession(s)}
+                />
               ))}
             </div>
           ))}
         </div>
       )}
+
+      {pending && (
+        <ConfirmModal
+          message={pending.label}
+          onConfirm={confirmDelete}
+          onCancel={() => !deleting && setPending(null)}
+          loading={deleting}
+        />
+      )}
     </div>
   );
 }
 
-function SessionRow({ session: s, onClick }: { session: CourseSession; onClick: () => void }) {
+function SessionRow({ session: s, onClick, onDelete }: { session: CourseSession; onClick: () => void; onDelete: () => void }) {
   const date = new Date(s.updated_at).toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
   const hasPdf = s.source_files.some((f) => f.kind === "pdf");
   const hasAudio = s.source_files.some((f) => f.kind === "audio");
@@ -253,7 +353,17 @@ function SessionRow({ session: s, onClick }: { session: CourseSession; onClick: 
 
       <StatusChip status={s.status} />
 
-      <div />
+      <button
+        className="btn btn-icon row-delete-btn"
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        aria-label="删除此讲"
+        title="删除此讲"
+        type="button"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0" />
+        </svg>
+      </button>
 
       <svg className="session-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="m9 18 6-6-6-6" />
