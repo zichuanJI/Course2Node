@@ -39,7 +39,7 @@ def list_session_ids() -> list[uuid.UUID]:
 
 
 def _read_model(path: Path, model_type: type[T]) -> T:
-    return model_type.model_validate_json(path.read_text())
+    return model_type.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def _write_model(path: Path, model: BaseModel) -> Path:

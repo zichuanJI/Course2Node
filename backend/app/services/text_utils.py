@@ -16,9 +16,15 @@ EN_STOPWORDS = {
 }
 
 ZH_STOPWORDS = {
+    # 基础代词与连词
     "我们", "你们", "他们", "这个", "那个", "一种", "以及", "如果", "因为", "所以", "然后",
     "就是", "可以", "需要", "进行", "通过", "一个", "一些", "没有", "不是", "这种", "那个",
-    "课程", "内容", "知识", "问题", "什么", "怎么", "这里", "那里", "已经", "对于", "关于",
+    "什么", "怎么", "这里", "那里", "已经", "对于", "关于", "而且", "并且", "或者", "还是",
+    "只有", "只要", "虽然", "但是", "不仅", "作为", "为了", "这些", "那些", "自己",
+    # 领域/课程常见高频无意义词
+    "课程", "内容", "知识", "问题", "分析", "研究", "主要", "对象", "方法", "探讨",
+    "介绍", "理解", "掌握", "应用", "基础", "重点", "难点", "部分", "方面", "过程",
+    "特征", "特点", "情况", "影响", "作用", "意义", "目的", "使用", "产生", "发现",
 }
 
 PUNCT_RE = re.compile(r"[^\w\u4e00-\u9fff]+", re.UNICODE)
@@ -84,21 +90,23 @@ def english_tokens(text: str) -> list[str]:
 
 
 def chinese_terms(text: str) -> list[str]:
+    try:
+        import jieba.posseg as pseg
+    except ImportError:
+        # Fallback to naive logic if jieba is not available
+        candidates: list[str] = []
+        for run in ZH_RUN_RE.findall(text):
+            if 2 <= len(run.strip()) <= 8:
+                candidates.append(run.strip())
+        return candidates
+
     candidates: list[str] = []
-    for run in ZH_RUN_RE.findall(text):
-        cleaned = run.strip()
-        if cleaned in ZH_STOPWORDS:
-            continue
-        if 2 <= len(cleaned) <= 8:
-            candidates.append(cleaned)
-        for n in (2, 3, 4):
-            if len(cleaned) < n:
-                continue
-            for index in range(len(cleaned) - n + 1):
-                term = cleaned[index:index + n]
-                if term in ZH_STOPWORDS:
-                    continue
-                candidates.append(term)
+    # 只提取名词(n, ng), 专有名词(nr, nz, ns, nt), 动名词(vn), 简称(j) 等具有实体意义的词序
+    allowed_flags = {"n", "ng", "nr", "nz", "ns", "nt", "vn", "j", "l", "i"}
+    for word, flag in pseg.cut(text):
+        if len(word) >= 2 and flag in allowed_flags:
+            if word not in ZH_STOPWORDS:
+                candidates.append(word)
     return candidates
 
 
