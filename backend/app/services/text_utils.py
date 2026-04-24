@@ -34,6 +34,7 @@ SENTENCE_RE = re.compile(r"(?<=[。！？!?;；\.])\s+")
 
 
 def normalize_text(text: str) -> str:
+    text = text.replace("\\n", " ").replace("\\t", " ").replace("\\r", " ")
     collapsed = re.sub(r"\s+", " ", text)
     return collapsed.strip()
 
@@ -180,4 +181,3 @@ def best_snippet(text: str, query_terms: list[str], max_chars: int = 180) -> str
         reverse=True,
     )
     return scored[0][:max_chars]
-

@@ -27,6 +27,17 @@ function SkeletonCard() {
   );
 }
 
+function evidenceSourceLabel(sourceType: string) {
+  return sourceType === "pdf" ? "PDF" : "音频";
+}
+
+function evidenceLocatorLabel(sourceType: string, locator: string) {
+  if (sourceType === "pdf" && (!locator || locator === "PDF" || locator === "p.None")) {
+    return "";
+  }
+  return locator === "p.None" ? "" : locator;
+}
+
 export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const conceptId = searchParams.get("concept");
@@ -120,7 +131,7 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
               <div className="cd-hero-title">{concept.name}</div>
               {concept.aliases.length > 0 && (
                 <div className="cd-hero-aliases">
-                  {concept.aliases.map((a) => (
+                  {concept.aliases.slice(0, 5).map((a) => (
                     <span key={a} className="cd-hero-alias">{a}</span>
                   ))}
                 </div>
@@ -237,10 +248,12 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
                   {evidenceToShow.map((ref) => (
                     <div key={ref.chunk_id} className="cd-evidence-item">
                       <div className="cd-evidence-head">
-                        <span>{ref.source_type === "pdf" ? "PDF" : "音频"}</span>
-                        <span className="cd-evi-loc">{ref.locator}</span>
+                        <span>{evidenceSourceLabel(ref.source_type)}</span>
+                        {evidenceLocatorLabel(ref.source_type, ref.locator) && (
+                          <span className="cd-evi-loc">{evidenceLocatorLabel(ref.source_type, ref.locator)}</span>
+                        )}
                       </div>
-                      <div className="cd-evidence-snip">{ref.snippet}</div>
+                      {ref.snippet && <div className="cd-evidence-snip">{ref.snippet}</div>}
                     </div>
                   ))}
                 </div>

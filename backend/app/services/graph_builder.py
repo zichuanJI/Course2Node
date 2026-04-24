@@ -18,6 +18,7 @@ from app.core.types import (
     SessionStatus,
     TopicClusterNode,
 )
+from app.services.embeddings import embed_texts, embedding_configured
 from app.services.llm_graph import GraphExtractionResult, extract_graph_candidates, llm_graph_configured
 from app.services.text_utils import (
     best_snippet,
@@ -46,6 +47,7 @@ def build_graph(session_id: uuid.UUID) -> GraphArtifact:
         concepts, edges = _extract_graph_structure(chunks)
         if not concepts:
             raise ValueError("No concepts could be extracted from the ingested sources.")
+        _apply_concept_embeddings(concepts)
         _assign_importance_scores(concepts, edges)
         clusters = _build_clusters(concepts, edges)
         graph = GraphArtifact(
@@ -87,6 +89,10 @@ def _extract_graph_structure(chunks: list[EvidenceChunk]) -> tuple[list[ConceptN
             logger.warning("LLM graph extraction returned no valid concepts, falling back to rules.")
         except Exception as exc:
             logger.exception("LLM graph extraction failed.")
+            if "timed out" in str(exc).lower() or "timeout" in str(exc).lower():
+                logger.warning("LLM graph extraction timed out, falling back to rule-based extraction.")
+                concepts = _build_concepts(chunks)
+                return concepts, _build_edges(chunks, concepts)
             if settings.graph_llm_strict:
                 raise RuntimeError(f"LLM graph extraction failed: {exc}") from exc
             logger.warning("Falling back to rule-based graph extraction after LLM failure.")
@@ -126,6 +132,11 @@ def _build_concepts_from_llm(
         if not definition:
             snippets = " ".join(ref.snippet for ref in evidence_refs)
             definition = summarize_text(snippets, max_sentences=1, max_chars=150)
+        summary = candidate.summary.strip() or summarize_text(
+            " ".join(ref.snippet for ref in evidence_refs),
+            max_sentences=2,
+            max_chars=220,
+        )
 
         source_count = len({ref.source_id for ref in evidence_refs})
         canonical_name = canonicalize_term(candidate.canonical_name or candidate.name)
@@ -136,7 +147,12 @@ def _build_concepts_from_llm(
                 canonical_name=canonical_name,
                 aliases=aliases[:10],
                 definition=definition,
-                embedding=hash_embedding(" ".join([candidate.name, canonical_name, definition, *aliases])),
+                summary=summary,
+                key_points=candidate.key_points[:4],
+                tags=candidate.tags[:5],
+                prerequisites=candidate.prerequisites[:4],
+                applications=candidate.applications[:4],
+                embedding=[],
                 importance_score=0.0,
                 source_count=source_count,
                 evidence_refs=evidence_refs[:6],
@@ -152,6 +168,7 @@ def _build_edges_from_llm(
     extracted: GraphExtractionResult,
 ) -> list[GraphEdge]:
     concept_by_canonical = {concept.canonical_name: concept for concept in concepts}
+    chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
     relation_edges: list[GraphEdge] = []
     existing_edge_keys: set[tuple[str, str, EdgeType, str | None]] = set()
 
@@ -160,23 +177,37 @@ def _build_edges_from_llm(
         target = concept_by_canonical.get(canonicalize_term(relation.target_canonical_name))
         if source is None or target is None or source.concept_id == target.concept_id:
             continue
+        valid_evidence_ids = [
+            chunk_id
+            for chunk_id in dict.fromkeys(relation.evidence_chunk_ids)
+            if chunk_id in chunk_by_id
+        ]
+        if not valid_evidence_ids:
+            continue
 
         if relation.edge_type == EdgeType.relates_to.value and relation.relation_type:
             relation_type = RelationType(relation.relation_type)
+            key = (source.concept_id, target.concept_id, EdgeType.relates_to, relation_type.value)
+            if key in existing_edge_keys:
+                continue
             edge = GraphEdge(
                 source=source.concept_id,
                 target=target.concept_id,
                 edge_type=EdgeType.relates_to,
                 properties={
                     "relation_type": relation_type.value,
-                    "confidence": round(max(relation.confidence, 0.45), 2),
-                    "evidence_count": max(1, len(relation.evidence_chunk_ids)),
+                    "confidence": round(max(relation.confidence, 0.55), 2),
+                    "evidence_count": len(valid_evidence_ids),
+                    "evidence_chunk_ids": valid_evidence_ids[:4],
                 },
             )
             relation_edges.append(edge)
-            existing_edge_keys.add((edge.source, edge.target, edge.edge_type, relation_type.value))
-        elif relation.edge_type == EdgeType.co_occurs_with.value:
-            cooccur_count = max(1, len(relation.evidence_chunk_ids))
+            existing_edge_keys.add(key)
+        elif relation.edge_type == EdgeType.co_occurs_with.value and len(valid_evidence_ids) >= 2:
+            key = (source.concept_id, target.concept_id, EdgeType.co_occurs_with, None)
+            if key in existing_edge_keys:
+                continue
+            cooccur_count = len(valid_evidence_ids)
             edge = GraphEdge(
                 source=source.concept_id,
                 target=target.concept_id,
@@ -185,64 +216,11 @@ def _build_edges_from_llm(
                     "cooccur_count": cooccur_count,
                     "doc_count": min(source.source_count, target.source_count),
                     "normalized_weight": round(min(1.0, 0.25 + cooccur_count * 0.15), 3),
+                    "evidence_chunk_ids": valid_evidence_ids[:4],
                 },
             )
             relation_edges.append(edge)
-            existing_edge_keys.add((edge.source, edge.target, edge.edge_type, None))
-
-    if relation_edges:
-        return relation_edges
-
-    concept_terms = {
-        concept.concept_id: set(concept.aliases + [concept.name, concept.canonical_name])
-        for concept in concepts
-    }
-    cooccur_counts: Counter[tuple[str, str]] = Counter()
-    for chunk in chunks:
-        mentioned = _mentioned_concepts(chunk, concept_terms)
-        for left, right in itertools.combinations(sorted(mentioned), 2):
-            cooccur_counts[(left, right)] += 1
-
-    for (left, right), count in cooccur_counts.items():
-        left_concept = next(concept for concept in concepts if concept.concept_id == left)
-        right_concept = next(concept for concept in concepts if concept.concept_id == right)
-        cooccur_key = (left, right, EdgeType.co_occurs_with, None)
-        if cooccur_key not in existing_edge_keys and (
-            count >= 2 or _is_semantically_close(left_concept, right_concept)
-        ):
-            relation_edges.append(
-                GraphEdge(
-                    source=left,
-                    target=right,
-                    edge_type=EdgeType.co_occurs_with,
-                    properties={
-                        "cooccur_count": count,
-                        "doc_count": min(left_concept.source_count, right_concept.source_count),
-                        "normalized_weight": round(min(1.0, 0.2 + count * 0.15), 3),
-                    },
-                )
-            )
-            existing_edge_keys.add(cooccur_key)
-
-        relates_key = (left, right, EdgeType.relates_to, RelationType.similar_to.value)
-        has_explicit_relation = any(
-            item[0] == left and item[1] == right and item[2] == EdgeType.relates_to
-            for item in existing_edge_keys
-        )
-        if not has_explicit_relation and count >= 2:
-            relation_edges.append(
-                GraphEdge(
-                    source=left,
-                    target=right,
-                    edge_type=EdgeType.relates_to,
-                    properties={
-                        "relation_type": RelationType.similar_to.value,
-                        "confidence": round(0.45 + min(0.35, count * 0.08), 2),
-                        "evidence_count": count,
-                    },
-                )
-            )
-            existing_edge_keys.add(relates_key)
+            existing_edge_keys.add(key)
 
     return relation_edges
 
@@ -318,7 +296,16 @@ def _build_concepts(chunks: list[EvidenceChunk]) -> list[ConceptNode]:
                 canonical_name=canonical,
                 aliases=sorted(alias_map[canonical]),
                 definition=summarize_text(snippet, max_sentences=1, max_chars=150),
-                embedding=hash_embedding(" ".join(chunk.text for chunk in hits[:4])),
+                summary=summarize_text(" ".join(chunk.text for chunk in hits[:2]), max_sentences=2, max_chars=220),
+                key_points=[
+                    summarize_text(chunk.text, max_sentences=1, max_chars=120)
+                    for chunk in hits[:3]
+                    if summarize_text(chunk.text, max_sentences=1, max_chars=120)
+                ][:4],
+                tags=sorted(alias_map[canonical])[:5],
+                prerequisites=[],
+                applications=[],
+                embedding=[],
                 importance_score=0.0,
                 source_count=len(source_map[canonical]),
                 evidence_refs=[
@@ -329,6 +316,32 @@ def _build_concepts(chunks: list[EvidenceChunk]) -> list[ConceptNode]:
         )
 
     return concepts
+
+
+def _apply_concept_embeddings(concepts: list[ConceptNode]) -> None:
+    if not concepts:
+        return
+    if not embedding_configured():
+        raise RuntimeError("Embedding service is not configured. Set EMBEDDING_API_KEY and EMBEDDING_MODEL.")
+    texts = [
+        " | ".join(
+            part
+            for part in [
+                concept.name,
+                concept.definition,
+                concept.summary,
+                " ; ".join(concept.key_points),
+                " ; ".join(concept.tags),
+            ]
+            if part
+        )
+        for concept in concepts
+    ]
+    vectors = embed_texts(texts)
+    if len(vectors) != len(concepts):
+        raise RuntimeError("Embedding service returned an unexpected number of concept vectors.")
+    for concept, vector in zip(concepts, vectors):
+        concept.embedding = vector
 
 
 def _assign_importance_scores(concepts: list[ConceptNode], edges: list[GraphEdge]) -> None:
@@ -357,7 +370,7 @@ def _assign_importance_scores(concepts: list[ConceptNode], edges: list[GraphEdge
 
 def _chunk_to_ref(chunk: EvidenceChunk, term: str) -> EvidenceRef:
     if chunk.source_type.value == "pdf":
-        locator = f"p.{chunk.page_start}"
+        locator = f"p.{chunk.page_start}" if chunk.page_start is not None else "PDF"
     else:
         locator = f"{_format_seconds(chunk.time_start)}-{_format_seconds(chunk.time_end)}"
     return EvidenceRef(
@@ -365,7 +378,7 @@ def _chunk_to_ref(chunk: EvidenceChunk, term: str) -> EvidenceRef:
         source_id=chunk.source_id,
         source_type=chunk.source_type,
         locator=locator,
-        snippet=best_snippet(chunk.text, [term]),
+        snippet=best_snippet(chunk.text, [term]) if chunk.page_start is not None or chunk.source_type.value != "pdf" else "",
     )
 
 

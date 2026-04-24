@@ -65,7 +65,7 @@ class EmbedProvider(ABC):
     """Text embedding backend for the align stage."""
 
     @abstractmethod
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str]) -> list[list[float]]:
         """Returns one embedding vector per input text."""
         ...
 

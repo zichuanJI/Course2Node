@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from collections import deque
 
+from app.services.embeddings import embed_query
 from app.core.types import (
     EdgeType,
     SearchChunkHit,
@@ -12,13 +13,13 @@ from app.core.types import (
     SubgraphNode,
     SubgraphResponse,
 )
-from app.services.text_utils import best_snippet, cosine_similarity, extract_candidate_terms, hash_embedding
+from app.services.text_utils import best_snippet, cosine_similarity, extract_candidate_terms
 from app.storage.local import list_ingest_artifacts, load_graph_artifact
 
 
 def search_graph(session_id: uuid.UUID, query: str, limit: int = 8) -> SearchResponse:
     graph = load_graph_artifact(session_id)
-    query_embedding = hash_embedding(query)
+    query_embedding = embed_query(query)
     query_terms = extract_candidate_terms(query, top_k=8) or [query]
 
     concept_hits: list[SearchConceptHit] = []
@@ -113,4 +114,3 @@ def get_subgraph(session_id: uuid.UUID, center_concept_id: str, depth: int = 1) 
         nodes=nodes,
         edges=edges,
     )
-

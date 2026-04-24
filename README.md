@@ -99,18 +99,18 @@ npm run dev
 
 ## 当前实现说明
 
-- PDF 解析使用 `PyMuPDF`
-- 当 PDF 某些页几乎抽不到文本时，可选接入视觉模型按页兜底提取
+- PDF 解析主路径为：本地库只负责把页面渲染成图片，再交给 `Kimi` 提取页面文本与结构
 - 音频转写优先使用 `openai-whisper`
 - 如果当前环境没有装好 Whisper，音频 ingest 会写入降级提示文本，方便前端流程先跑通
 - 知识点抽取当前支持两条路径：
   - 配置 `graph_llm_*` 后，优先走 OpenAI-compatible LLM 抽取 `concepts + relations`
   - 未配置 LLM 时，回退到仓库里的 `规则 + 统计` 版本
+- chunk 与 concept 的 `embedding` 已预留为真实向量接口，不再推荐使用本地哈希向量
 - 图结果当前仍保存在本地 `graph.json`，课堂展示版不依赖 Neo4j
 - session、ingest artifact、graph artifact、note artifact 当前都保存在 `backend/artifacts/<session_id>/` 下
 - 上传新文件到已有 session 时，会使旧 graph/note 失效，避免继续读取过期结果
 
-## LLM 配置
+## 模型配置
 
 课堂展示版建议配置一条 OpenAI-compatible 接口，便于切换 `DeepSeek / Qwen / OpenAI`：
 
@@ -120,12 +120,20 @@ GRAPH_LLM_API_KEY=
 GRAPH_LLM_MODEL=
 ```
 
-如果希望对图片型 PDF 页面做视觉兜底，可额外配置：
+PDF ingest 主路径默认使用 Kimi 抽页内容：
 
 ```bash
-PDF_VISION_BASE_URL=
-PDF_VISION_API_KEY=
-PDF_VISION_MODEL=
+KIMI_BASE_URL=https://api.moonshot.cn/v1
+KIMI_API_KEY=
+KIMI_MODEL=kimi-k2.6
+```
+
+embedding 当前默认走本地部署的 `bge-m3`：
+
+```bash
+EMBED_PROVIDER=bge_m3
+EMBEDDING_LOCAL_MODEL_NAME=BAAI/bge-m3
+EMBEDDING_LOCAL_DEVICE=cpu
 ```
 
 ## 测试

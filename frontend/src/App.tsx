@@ -16,14 +16,12 @@ const WorkspacePage = lazy(() =>
 function AppInner() {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
-  const [theme, setTheme] = useState<string>(() => localStorage.getItem("c2n:theme") ?? "copper");
   const [graphStyle, setGraphStyle] = useState<string>(() => localStorage.getItem("c2n:graphStyle") ?? "force");
 
-  // Persist to localStorage
+  // Force default theme
   useEffect(() => {
-    localStorage.setItem("c2n:theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
+    document.documentElement.setAttribute("data-theme", "copper");
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("c2n:graphStyle", graphStyle);
@@ -67,8 +65,6 @@ function AppInner() {
       <TweaksPanel
         open={tweaksOpen}
         onClose={() => setTweaksOpen(false)}
-        theme={theme}
-        setTheme={setTheme}
         graphStyle={graphStyle}
         setGraphStyle={setGraphStyle}
       />

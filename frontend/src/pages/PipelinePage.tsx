@@ -106,7 +106,7 @@ function PipelineCanvas({ phase, progress }: { phase: number; progress: number }
 // ── Log lines ─────────────────────────────────────────────────────────────────
 interface LogLine { ts: string; text: string; cls: string; }
 
-function makeLogLines(status: SessionStatus): LogLine[] {
+function makeLogLines(status: SessionStatus, errorMessage?: string | null): LogLine[] {
   const now = () => new Date().toLocaleTimeString("zh-CN", { hour12: false });
   const lines: LogLine[] = [];
   if (status === "uploaded") {
@@ -119,7 +119,7 @@ function makeLogLines(status: SessionStatus): LogLine[] {
     lines.push({ ts: now(), text: "文档解析完成", cls: "log-ok" });
     lines.push({ ts: now(), text: "概念图谱构建完成", cls: "log-ok" });
   } else if (status === "failed") {
-    lines.push({ ts: now(), text: "处理失败，请检查文件格式", cls: "log-warn" });
+    lines.push({ ts: now(), text: errorMessage ? `处理失败：${errorMessage}` : "处理失败，请查看后端错误信息", cls: "log-warn" });
   }
   return lines;
 }
@@ -199,7 +199,8 @@ export function PipelinePage() {
     }
   }, [currentStatus, id, navigate]);
 
-  const logLines = useMemo(() => makeLogLines(currentStatus), [currentStatus]);
+  const errorMessage = statusData?.error_message ?? session?.error_message;
+  const logLines = useMemo(() => makeLogLines(currentStatus, errorMessage), [currentStatus, errorMessage]);
   const isDone = currentStatus === "graph_ready" || currentStatus === "notes_ready";
 
   return (

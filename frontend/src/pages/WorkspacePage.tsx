@@ -17,7 +17,7 @@ interface WorkspacePageProps {
   graphStyle?: string;
 }
 
-export function WorkspacePage({ graphStyle: _graphStyle = "force" }: WorkspacePageProps) {
+export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -147,7 +147,7 @@ export function WorkspacePage({ graphStyle: _graphStyle = "force" }: WorkspacePa
           </div>
 
           <Suspense fallback={<Skeleton style={{ width: "100%", height: "100%", borderRadius: 0 }} />}>
-            <ConceptGraph sessionId={id} />
+            <ConceptGraph sessionId={id} graphStyle={graphStyle} />
           </Suspense>
           <ConceptDrawer sessionId={id} />
 

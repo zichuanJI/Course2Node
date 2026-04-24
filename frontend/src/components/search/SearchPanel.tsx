@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { searchGraph } from "../../api/client";
+import { getGraph, searchGraph } from "../../api/client";
 import { Input } from "../primitives/Input";
 import { Pill } from "../primitives/Pill";
 import { useDebouncedCallback } from "../../hooks/useDebouncedCallback";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import type { SearchResponse } from "../../types";
+import type { ConceptNode, SearchResponse } from "../../types";
 import "./SearchPanel.css";
 
 type FilterKind = "all" | "concepts" | "chunks";
@@ -17,12 +17,23 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
   const [filterKind, setFilterKind] = useState<FilterKind>("all");
   const [filterSource, setFilterSource] = useState<SourceFilter>("all");
   const [results, setResults] = useState<SearchResponse | null>(null);
+  const [conceptsList, setConceptsList] = useState<ConceptNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [recentQueries, setRecentQueries] = useLocalStorage<string[]>(
     `c2n:recent:${sessionId}`,
     [],
   );
   const latestQuery = useRef("");
+
+  useEffect(() => {
+    getGraph(sessionId)
+      .then((graph) => {
+        setConceptsList(
+          [...graph.concepts].sort((a, b) => b.importance_score - a.importance_score),
+        );
+      })
+      .catch(() => setConceptsList([]));
+  }, [sessionId]);
 
   const doSearch = useCallback(
     async (q: string) => {
@@ -89,6 +100,30 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
         ))}
       </div>
 
+      {!query && (
+        <div className="concept-list">
+          <div className="search-section-label">知识点列表 ({conceptsList.length})</div>
+          {conceptsList.map((concept) => (
+            <button
+              key={concept.concept_id}
+              className="concept-list-row"
+              onClick={() => setSearchParams({ concept: concept.concept_id })}
+              type="button"
+            >
+              <span className="concept-list-name">{concept.name}</span>
+              <span className="concept-list-meta">
+                {Math.round(concept.importance_score * 100)} · {concept.evidence_refs.length} 证据
+              </span>
+            </button>
+          ))}
+          {conceptsList.length === 0 && (
+            <p style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--control-text-color)" }}>
+              暂无知识点数据
+            </p>
+          )}
+        </div>
+      )}
+
       {!query && recentQueries.length > 0 && (
         <div className="search-recent">
           <span className="search-recent-label">最近搜索</span>
@@ -131,7 +166,7 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
                   <div className="search-chunk-text">{c.text}</div>
                   <div className="search-chunk-meta">
                     {c.source_type === "pdf"
-                      ? `PDF · 第 ${c.page_start} 页`
+                      ? `PDF${c.page_start == null ? "" : ` · 第 ${c.page_start} 页`}`
                       : `音频 · ${c.time_start?.toFixed(1)}s`}
                     {" · "}相关度 {(c.score * 100).toFixed(0)}%
                   </div>

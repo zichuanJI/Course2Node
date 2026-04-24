@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 
 from app.core.types import CourseSession, SessionStatus, SourceFile, SourceKind, UploadResponse
 from app.services.graph_builder import build_graph
@@ -94,8 +95,8 @@ async def upload_pdfs(
     if auto_ingest_and_build:
         try:
             for source in session.source_files:
-                ingest_source(session.session_id, source.source_id)
-            graph = build_graph(session.session_id)
+                await run_in_threadpool(ingest_source, session.session_id, source.source_id)
+            graph = await run_in_threadpool(build_graph, session.session_id)
             return {
                 "session_id": str(session.session_id),
                 "source_ids": source_ids,

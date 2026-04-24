@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ReactFlow, {
   Background,
   Controls,
+  Handle,
   MiniMap,
+  Position,
   type Node,
   type Edge,
+  type NodeProps,
   useNodesState,
   useEdgesState,
-  addEdge,
-  type Connection,
 } from "reactflow";
-import dagre from "dagre";
+import { layoutWithForce, layoutWithRadial, layoutWithCluster } from "./layoutUtils";
 import "reactflow/dist/style.css";
 
 import { getGraph, fetchSubgraph } from "../../api/client";
@@ -20,115 +21,126 @@ import "./ConceptGraph.css";
 
 interface GraphProps {
   sessionId: string;
+  graphStyle?: string;
 }
 
 const EDGE_COLORS: Record<string, string> = {
-  RELATES_TO:      "var(--accent-color)",
-  CO_OCCURS_WITH:  "var(--border-color)",
-  CONTAINS:        "var(--color-success)",
-  MENTIONS:        "var(--control-text-color)",
+  RELATES_TO:      "rgba(184, 93, 48, 0.74)",
+  CO_OCCURS_WITH:  "rgba(136, 124, 105, 0.18)",
+  CONTAINS:        "rgba(63, 123, 80, 0.56)",
+  MENTIONS:        "rgba(126, 118, 101, 0.24)",
 };
 
-function layoutWithDagre(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80 });
+const CLUSTER_COLORS = [
+  "#2f63d6",
+  "#b85229",
+  "#3f7b50",
+  "#c47a12",
+  "#27221c",
+  "#7a5c9e",
+];
 
-  nodes.forEach((node) => {
-    g.setNode(node.id, { width: 140, height: 36 });
-  });
-
-  edges.forEach((edge) => {
-    g.setEdge(edge.source, edge.target);
-  });
-
-  dagre.layout(g);
-
-  return {
-    nodes: nodes.map((node) => {
-      const n = g.node(node.id);
-      return { ...node, position: { x: n.x - 70, y: n.y - 18 } };
-    }),
-    edges,
-  };
+function ConceptBubbleNode({ data }: NodeProps<{ label: string; color: string; selected?: boolean }>) {
+  return (
+    <div className="concept-bubble-node">
+      <Handle type="target" position={Position.Left} className="concept-handle concept-handle-left" />
+      <div
+        className="concept-bubble-ring"
+        style={{
+          borderColor: data.color,
+          boxShadow: data.selected ? `0 0 0 5px color-mix(in oklab, ${data.color} 18%, transparent)` : undefined,
+        }}
+      />
+      <div className="concept-bubble-label">{data.label}</div>
+      <Handle type="source" position={Position.Right} className="concept-handle concept-handle-right" />
+    </div>
+  );
 }
 
-function artifactToFlow(artifact: GraphArtifact): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = [
-    ...artifact.concepts.map((c) => ({
+const nodeTypes = { conceptBubble: ConceptBubbleNode };
+
+function applyLayout(nodes: Node[], edges: Edge[], graphStyle: string) {
+  switch (graphStyle) {
+    case "radial": return layoutWithRadial(nodes, edges);
+    case "cluster": return layoutWithCluster(nodes, edges);
+    case "force": default: return layoutWithForce(nodes, edges);
+  }
+}
+
+function artifactToFlow(artifact: GraphArtifact, graphStyle: string): { nodes: Node[]; edges: Edge[] } {
+  const clusterByConcept = new Map<string, number>();
+  artifact.topic_clusters.forEach((cluster, index) => {
+    cluster.concept_ids.forEach((conceptId) => clusterByConcept.set(conceptId, index));
+  });
+
+  const nodes: Node[] = artifact.concepts.map((c) => {
+    const clusterIndex = clusterByConcept.get(c.concept_id) ?? -1;
+    const color = CLUSTER_COLORS[(clusterIndex >= 0 ? clusterIndex : Math.abs(c.concept_id.length)) % CLUSTER_COLORS.length];
+    return {
       id: c.concept_id,
-      type: "default",
-      data: { label: c.name },
+      type: "conceptBubble",
+      data: { label: c.name, nodeType: "concept", color },
       position: { x: 0, y: 0 },
-      style: {
-        background: "var(--bg-color)",
-        border: "1.5px solid var(--border-color)",
-        borderRadius: "999px",
-        fontFamily: "var(--font-ui)",
-        fontSize: "12px",
-        padding: "6px 14px",
-        cursor: "pointer",
-      },
-    })),
-    ...artifact.topic_clusters.map((cl) => ({
-      id: cl.cluster_id,
-      type: "default",
-      data: { label: cl.title },
-      position: { x: 0, y: 0 },
-      style: {
-        background: "var(--side-bar-bg-color)",
-        border: "1.5px solid var(--border-color)",
-        borderRadius: "var(--radius-md)",
-        fontFamily: "var(--font-ui)",
-        fontSize: "12px",
-        fontWeight: "600",
-        padding: "6px 14px",
-      },
-    })),
-  ];
+    };
+  });
 
-  const edges: Edge[] = artifact.edges.map((e) => ({
-    id: e.edge_id,
-    source: e.source,
-    target: e.target,
-    style: { stroke: EDGE_COLORS[e.edge_type] ?? "var(--border-color)", strokeWidth: 1.5 },
-    type: "default",
-    animated: false,
-  }));
+  const conceptIds = new Set(artifact.concepts.map((concept) => concept.concept_id));
 
-  return layoutWithDagre(nodes, edges);
+  const edges: Edge[] = artifact.edges
+    .filter((e) => conceptIds.has(e.source) && conceptIds.has(e.target))
+    .map((e) => ({
+      id: e.edge_id,
+      source: e.source,
+      target: e.target,
+      style: {
+        stroke: EDGE_COLORS[e.edge_type] ?? "rgba(136, 124, 105, 0.18)",
+        strokeWidth: e.edge_type === "RELATES_TO" ? 1.8 : 0.9,
+      },
+      type: "straight",
+      animated: false,
+    }));
+
+  return applyLayout(nodes, edges, graphStyle);
 }
 
-function subgraphToFlow(sub: SubgraphResponse): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = sub.nodes.map((n) => ({
-    id: n.id,
-    type: "default",
-    data: { label: n.label },
-    position: { x: 0, y: 0 },
-    style: {
-      background: n.id === sub.center_concept_id ? "var(--accent-strong)" : "var(--bg-color)",
-      border: n.id === sub.center_concept_id
-        ? "2px solid var(--accent-color)"
-        : "1.5px solid var(--border-color)",
-      borderRadius: n.node_type === "concept" ? "999px" : "var(--radius-md)",
-      fontFamily: "var(--font-ui)",
-      fontSize: "12px",
-      padding: "6px 14px",
-      cursor: "pointer",
-    },
-  }));
+function subgraphToFlow(sub: SubgraphResponse, graphStyle: string): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = sub.nodes.map((n) => {
+    if (n.node_type === "concept") {
+      return {
+        id: n.id,
+        type: "conceptBubble",
+        data: {
+          label: n.label,
+          nodeType: n.node_type,
+          color: n.id === sub.center_concept_id ? "#b85229" : "#2f63d6",
+          selected: n.id === sub.center_concept_id,
+        },
+        position: { x: 0, y: 0 },
+      };
+    }
+    return {
+      id: n.id,
+      type: "default",
+      data: { label: n.label, nodeType: n.node_type },
+      position: { x: 0, y: 0 },
+    };
+  });
 
   const edges: Edge[] = sub.edges.map((e, i) => ({
     id: `e${i}`,
     source: e.source,
     target: e.target,
-    style: { stroke: EDGE_COLORS[e.edge_type] ?? "var(--border-color)", strokeWidth: 1.5 },
+    type: "straight",
+    style: {
+      stroke: EDGE_COLORS[e.edge_type] ?? "rgba(136, 124, 105, 0.18)",
+      strokeWidth: e.edge_type === "RELATES_TO" ? 1.8 : 0.9,
+    },
   }));
 
-  return layoutWithDagre(nodes, edges);
+  return applyLayout(nodes, edges, graphStyle);
 }
 
-export function ConceptGraph({ sessionId }: GraphProps) {
+export function ConceptGraph({ sessionId, graphStyle = "force" }: GraphProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const conceptId = searchParams.get("concept");
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
@@ -142,14 +154,14 @@ export function ConceptGraph({ sessionId }: GraphProps) {
       try {
         if (conceptId) {
           const sub = await fetchSubgraph(sessionId, conceptId, 2);
-          const { nodes, edges } = subgraphToFlow(sub);
+          const { nodes, edges } = subgraphToFlow(sub, graphStyle);
           setRfNodes(nodes);
           setRfEdges(edges);
           setEmpty(nodes.length === 0);
         } else {
           const artifact = await getGraph(sessionId);
           if (artifact.concepts.length === 0) { setEmpty(true); setLoading(false); return; }
-          const { nodes, edges } = artifactToFlow(artifact);
+          const { nodes, edges } = artifactToFlow(artifact, graphStyle);
           setRfNodes(nodes);
           setRfEdges(edges);
           setEmpty(false);
@@ -161,10 +173,11 @@ export function ConceptGraph({ sessionId }: GraphProps) {
       }
     }
     void load();
-  }, [sessionId, conceptId, setRfNodes, setRfEdges]);
+  }, [sessionId, conceptId, graphStyle, setRfNodes, setRfEdges]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      if (node.data?.nodeType !== "concept") return;
       setSearchParams({ concept: node.id });
     },
     [setSearchParams],
@@ -189,6 +202,7 @@ export function ConceptGraph({ sessionId }: GraphProps) {
   return (
     <div className="concept-graph-wrap">
       <ReactFlow
+        nodeTypes={nodeTypes}
         nodes={rfNodes}
         edges={rfEdges}
         onNodesChange={onNodesChange}

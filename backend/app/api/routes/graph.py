@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 
 from app.core.types import BuildGraphRequest, GenerateNotesRequest, IngestRequest, SearchRequest
 from app.services.graph_builder import build_graph
@@ -17,7 +18,7 @@ router = APIRouter(tags=["graph"])
 @router.post("/ingest/pdf")
 async def ingest_pdf(request: IngestRequest):
     try:
-        artifact = ingest_source(request.session_id, request.source_id)
+        artifact = await run_in_threadpool(ingest_source, request.session_id, request.source_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Session not found.") from exc
     except ValueError as exc:
@@ -31,7 +32,7 @@ async def ingest_pdf(request: IngestRequest):
 @router.post("/ingest/audio")
 async def ingest_audio(request: IngestRequest):
     try:
-        artifact = ingest_source(request.session_id, request.source_id)
+        artifact = await run_in_threadpool(ingest_source, request.session_id, request.source_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Session not found.") from exc
     except ValueError as exc:
@@ -45,7 +46,7 @@ async def ingest_audio(request: IngestRequest):
 @router.post("/build_graph")
 async def build_graph_endpoint(request: BuildGraphRequest):
     try:
-        graph = build_graph(request.session_id)
+        graph = await run_in_threadpool(build_graph, request.session_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Session not found.") from exc
     except ValueError as exc:
@@ -63,7 +64,7 @@ async def build_graph_endpoint(request: BuildGraphRequest):
 @router.post("/search")
 async def search_endpoint(request: SearchRequest):
     try:
-        result = search_graph(request.session_id, request.query, request.limit)
+        result = await run_in_threadpool(search_graph, request.session_id, request.query, request.limit)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Graph not found.") from exc
     return result.model_dump(mode="json")
@@ -76,7 +77,7 @@ async def subgraph_endpoint(
     depth: int = Query(1, ge=1, le=3),
 ):
     try:
-        result = get_subgraph(session_id, concept_id, depth)
+        result = await run_in_threadpool(get_subgraph, session_id, concept_id, depth)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Graph not found.") from exc
     except ValueError as exc:
@@ -87,7 +88,7 @@ async def subgraph_endpoint(
 @router.post("/generate_notes")
 async def generate_notes_endpoint(request: GenerateNotesRequest):
     try:
-        note = generate_notes(request)
+        note = await run_in_threadpool(generate_notes, request)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Graph or session not found.") from exc
     except ValueError as exc:

@@ -1,20 +1,17 @@
-"""OpenAI embedding adapter (used in align stage)."""
+"""OpenAI embedding adapter."""
 from __future__ import annotations
 
-from openai import AsyncOpenAI
+from openai import OpenAI
 
 from app.config import settings
-from app.core.providers import EmbedProvider
+from app.core.providers import EmbedProvider  # type: ignore
 
 
 class OpenAIEmbedProvider(EmbedProvider):
-    def __init__(self, model: str = "text-embedding-3-small") -> None:
-        self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+    def __init__(self, model: str = "text-embedding-3-small", timeout_seconds: float = 30.0) -> None:
+        self._client = OpenAI(api_key=settings.openai_api_key, timeout=timeout_seconds, max_retries=0)
         self.model = model
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        response = await self._client.embeddings.create(
-            model=self.model,
-            input=texts,
-        )
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        response = self._client.embeddings.create(model=self.model, input=texts)
         return [item.embedding for item in response.data]

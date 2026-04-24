@@ -10,8 +10,9 @@ from pathlib import Path
 
 from app.config import settings
 from app.core.types import CourseSession, EvidenceChunk, IngestArtifact, SessionStatus, SourceFile, SourceKind
-from app.services.llm_graph import extract_text_from_page_image, pdf_visual_fallback_configured
-from app.services.text_utils import extract_candidate_terms, hash_embedding, normalize_text, split_text, summarize_text
+from app.services.embeddings import embed_texts, embedding_configured
+from app.services.kimi_pdf import extract_pdf_text_with_kimi, kimi_pdf_configured
+from app.services.text_utils import extract_candidate_terms, normalize_text, split_text, summarize_text
 from app.storage.local import list_ingest_artifacts, load_session, save_ingest_artifact, save_session
 
 
@@ -67,22 +68,20 @@ def _find_source(session: CourseSession, source_id: uuid.UUID) -> SourceFile:
 
 
 def _ingest_pdf(source: SourceFile) -> list[EvidenceChunk]:
-    try:
-        import fitz  # type: ignore
-    except ImportError as exc:
-        raise RuntimeError("PyMuPDF is required for PDF ingestion.") from exc
+    if not kimi_pdf_configured():
+        raise RuntimeError("Kimi PDF extraction is not configured. Set KIMI_API_KEY and KIMI_MODEL.")
+    if not embedding_configured():
+        raise RuntimeError("Embedding service is not configured. Configure EMBED_PROVIDER and its model settings.")
 
-    document = fitz.open(source.storage_path)
     chunks: list[EvidenceChunk] = []
-    fallback_pages_used = 0
-    for page_index, page in enumerate(document, start=1):
-        page_text, used_fallback = _extract_pdf_page_text(page, page_index, source.filename, fallback_pages_used)
-        if used_fallback:
-            fallback_pages_used += 1
-        for local_index, piece in enumerate(split_text(page_text), start=1):
+    extracted_blocks = extract_pdf_text_with_kimi(source.filename, source.storage_path)
+
+    for block_index, block in enumerate(extracted_blocks, start=1):
+        for local_index, piece in enumerate(split_text(block.text), start=1):
             if not piece.strip():
                 continue
-            chunk_id = f"{source.source_id}-p{page_index}-{local_index}"
+            locator = f"p{block.page_index}" if block.page_index is not None else f"d{block_index}"
+            chunk_id = f"{source.source_id}-{locator}-{local_index}"
             chunks.append(
                 EvidenceChunk(
                     chunk_id=chunk_id,
@@ -91,50 +90,20 @@ def _ingest_pdf(source: SourceFile) -> list[EvidenceChunk]:
                     text=piece,
                     summary=summarize_text(piece),
                     keywords=extract_candidate_terms(piece),
-                    embedding=hash_embedding(piece),
-                    page_start=page_index,
-                    page_end=page_index,
+                    embedding=[],
+                    page_start=block.page_index,
+                    page_end=block.page_index,
                 )
             )
+    if not chunks:
+        raise RuntimeError(f"Kimi PDF extraction produced no chunks for {source.filename}.")
+    _apply_embeddings(chunks)
     return chunks
 
 
-def _extract_pdf_page_text(page, page_index: int, filename: str, fallback_pages_used: int) -> tuple[str, bool]:
-    page_text = normalize_text(page.get_text("text"))
-    if not _should_attempt_visual_fallback(page_text):
-        return page_text, False
-    if fallback_pages_used >= settings.pdf_visual_fallback_max_pages:
-        return page_text, False
-    if not pdf_visual_fallback_configured():
-        return page_text, False
-    fallback_text = _extract_pdf_page_with_vision(page, page_index, filename)
-    if fallback_text:
-        return fallback_text, True
-    return page_text, False
-
-
-def _extract_pdf_page_with_vision(page, page_index: int, filename: str) -> str:
-    pixmap = page.get_pixmap(alpha=False)
-    image_bytes = pixmap.tobytes("png")
-    try:
-        return extract_text_from_page_image(
-            image_bytes,
-            filename=filename,
-            page_index=page_index,
-        )
-    except Exception:
-        return ""
-
-
-def _should_attempt_visual_fallback(page_text: str) -> bool:
-    stripped = normalize_text(page_text)
-    if len(stripped) >= settings.pdf_visual_fallback_min_chars:
-        return False
-    alpha_chars = sum(char.isalpha() or "\u4e00" <= char <= "\u9fff" for char in stripped)
-    return alpha_chars < max(20, settings.pdf_visual_fallback_min_chars // 2)
-
-
 def _ingest_audio(source: SourceFile) -> list[EvidenceChunk]:
+    if not embedding_configured():
+        raise RuntimeError("Embedding service is not configured. Set EMBEDDING_API_KEY and EMBEDDING_MODEL.")
     segments = _transcribe_audio(Path(source.storage_path))
     chunks: list[EvidenceChunk] = []
     for index, segment in enumerate(segments, start=1):
@@ -149,12 +118,23 @@ def _ingest_audio(source: SourceFile) -> list[EvidenceChunk]:
                 text=text,
                 summary=summarize_text(text),
                 keywords=extract_candidate_terms(text),
-                embedding=hash_embedding(text),
+                embedding=[],
                 time_start=segment["start"],
                 time_end=segment["end"],
             )
         )
+    _apply_embeddings(chunks)
     return chunks
+
+
+def _apply_embeddings(chunks: list[EvidenceChunk]) -> None:
+    if not chunks:
+        return
+    vectors = embed_texts([chunk.text for chunk in chunks])
+    if len(vectors) != len(chunks):
+        raise RuntimeError("Embedding service returned an unexpected number of vectors.")
+    for chunk, vector in zip(chunks, vectors):
+        chunk.embedding = vector
 
 
 def _transcribe_audio(audio_path: Path) -> list[dict[str, float | str]]:

@@ -114,6 +114,11 @@ class ConceptNode(BaseModel):
     canonical_name: str
     aliases: list[str] = Field(default_factory=list)
     definition: str = ""
+    summary: str = ""
+    key_points: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    prerequisites: list[str] = Field(default_factory=list)
+    applications: list[str] = Field(default_factory=list)
     embedding: list[float] = Field(default_factory=list)
     importance_score: float = 0.0
     source_count: int = 0

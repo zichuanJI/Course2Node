@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.core.types import (
@@ -12,8 +14,16 @@ from app.core.types import (
     SourceKind,
 )
 from app.services.graph_builder import build_graph
-from app.services.ingestion import _extract_pdf_page_text, _transcribe_audio, ingest_source
-from app.services.llm_graph import GraphExtractionResult, _select_graph_input_chunks
+from app.services.ingestion import _transcribe_audio, ingest_source
+from app.services.llm_graph import (
+    GraphExtractionResult,
+    _build_graph_prompt,
+    _extract_batch_candidates,
+    _looks_like_noise,
+    _looks_like_truncated_json_error,
+    _select_graph_input_chunks,
+)
+from app.services.kimi_pdf import ExtractedPdfTextBlock, split_kimi_file_content
 from app.services.notes import generate_notes
 from app.services.search import search_graph
 from app.config import settings
@@ -281,29 +291,87 @@ def test_build_graph_fails_instead_of_silent_rule_fallback_when_llm_is_enabled(t
     assert "LLM graph extraction failed: deepseek unavailable" in (stored_session.error_message or "")
 
 
-def test_extract_pdf_page_text_uses_vision_fallback_for_sparse_pages(tmp_storage, monkeypatch):
+def test_ingest_pdf_uses_kimi_file_extraction_and_real_embedding_hook(tmp_storage, monkeypatch):
     import app.services.ingestion as ingestion_module
 
-    class FakePage:
-        def get_text(self, _mode: str) -> str:
-            return "12 13"
+    source = _make_source(SourceKind.pdf, "slides.pdf")
+    source.storage_path = str(tmp_storage / "slides.pdf")
+    (tmp_storage / "slides.pdf").write_bytes(b"%PDF-1.4 fake")
+    session = CourseSession(
+        course_title="CS229",
+        lecture_title="Slides",
+        source_files=[source],
+    )
+    save_session(session)
 
-    monkeypatch.setattr(settings, "pdf_visual_fallback_min_chars", 80)
-    monkeypatch.setattr(ingestion_module, "pdf_visual_fallback_configured", lambda: True)
     monkeypatch.setattr(
         ingestion_module,
-        "_extract_pdf_page_with_vision",
-        lambda page, page_index, filename: "Recovered slide bullet one. Recovered slide bullet two.",
+        "kimi_pdf_configured",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        ingestion_module,
+        "embedding_configured",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        ingestion_module,
+        "extract_pdf_text_with_kimi",
+        lambda filename, path: [
+            ExtractedPdfTextBlock(
+                page_index=1,
+                text="Linked lists and recursion on page 1.\n- Definition\n- Complexity",
+            ),
+            ExtractedPdfTextBlock(
+                page_index=2,
+                text="Stacks use push and pop operations on page 2.",
+            ),
+        ],
     )
 
-    page_text, used_fallback = _extract_pdf_page_text(FakePage(), 1, "slides.pdf", 0)
+    artifact = ingest_source(session.session_id, source.source_id)
 
-    assert used_fallback is True
-    assert "Recovered slide bullet one" in page_text
+    assert artifact.chunks
+    assert all(chunk.embedding for chunk in artifact.chunks)
+    assert artifact.chunks[0].page_start == 1
+    assert "Linked lists and recursion" in artifact.chunks[0].text
 
 
-def test_select_graph_input_chunks_limits_large_documents(tmp_storage, monkeypatch):
-    monkeypatch.setattr(settings, "graph_llm_max_input_units", 14)
+def test_split_kimi_file_content_unwraps_json_content_with_page_markers():
+    payload = json.dumps(
+        {
+            "content": "第 1 页\n线性回归介绍。\n第 2 页\n梯度下降更新权重。",
+        },
+        ensure_ascii=False,
+    )
+
+    blocks = split_kimi_file_content(payload)
+
+    assert [block.page_index for block in blocks] == [1, 2]
+    assert "线性回归介绍" in blocks[0].text
+    assert not blocks[0].text.startswith("{")
+
+
+def test_split_kimi_file_content_reads_structured_page_objects():
+    payload = json.dumps(
+        {
+            "pages": [
+                {"page": 3, "title": "回归诊断", "content": "残差图用于检查模型假设。"},
+                {"page_index": 4, "body_text": "多重共线性会导致系数不稳定。", "bullets": ["VIF 可用于检测"]},
+            ]
+        },
+        ensure_ascii=False,
+    )
+
+    blocks = split_kimi_file_content(payload)
+
+    assert [block.page_index for block in blocks] == [3, 4]
+    assert "残差图" in blocks[0].text
+    assert "VIF" in blocks[1].text
+
+
+def test_select_graph_input_chunks_keeps_all_valid_chunks_by_default(tmp_storage, monkeypatch):
+    monkeypatch.setattr(settings, "graph_llm_max_input_units", 0)
 
     chunks = [
         _make_chunk(
@@ -319,9 +387,83 @@ def test_select_graph_input_chunks_limits_large_documents(tmp_storage, monkeypat
 
     selected = _select_graph_input_chunks(chunks)
 
-    assert len(selected) <= 14
+    assert len(selected) == len(chunks)
     assert selected[0].page_start == 1
     assert selected[-1].page_start is not None
+
+
+def test_graph_prompt_includes_curation_rules(tmp_storage):
+    chunk = _make_chunk(
+        chunk_id="chunk-1",
+        source_id="demo-pdf",
+        source_type=SourceKind.pdf,
+        text="关系模型包含关系、域、笛卡尔积、候选码、主码和外码等核心概念。",
+        page_start=1,
+        page_end=1,
+    )
+
+    prompt = _build_graph_prompt([chunk])
+
+    assert "候选概念 -> 噪声剔除 -> 同义归一化" in prompt
+    assert "默认丢弃人名、学号、课程号、专业号" in prompt
+    assert "关系模型、关系、域、笛卡尔积" in prompt
+    assert "definition 必须是一句教学定义" in prompt
+    assert "尽量完整抽取" in prompt
+    assert "key_points 最多 3 条" in prompt
+
+
+def test_graph_noise_filter_uses_curation_rules(tmp_storage):
+    assert _looks_like_noise("第二章")
+    assert _looks_like_noise("2.1.1")
+    assert _looks_like_noise("学号")
+    assert _looks_like_noise("张清玫")
+    assert _looks_like_noise("关系数据结构及形式化定义")
+    assert not _looks_like_noise("关系模型")
+
+
+def test_truncated_json_error_is_retryable(tmp_storage):
+    error = ValueError('Model did not return valid JSON: { "concepts": [ { "name": "相关分析", "ap')
+    assert _looks_like_truncated_json_error(error)
+    assert not _looks_like_truncated_json_error(ValueError("Graph provider unavailable"))
+
+
+def test_truncated_batch_is_split_before_compact_retry(tmp_storage, monkeypatch):
+    chunks = [
+        _make_chunk(
+            chunk_id=f"chunk-{index}",
+            source_id="demo-pdf",
+            source_type=SourceKind.pdf,
+            text=f"Concept {index} has a definition and a teaching explanation.",
+            page_start=index,
+            page_end=index,
+        )
+        for index in range(1, 3)
+    ]
+    calls: list[str] = []
+
+    class FakeProvider:
+        def generate_json(self, *, prompt: str, system: str, max_output_tokens: int | None = None, temperature: float = 0.1):
+            calls.append(prompt)
+            if len(calls) == 1:
+                raise ValueError('Model did not return valid JSON: { "concepts": [')
+            chunk_id = "chunk-2" if "[chunk-2]" in prompt else "chunk-1"
+            return {
+                "concepts": [
+                    {
+                        "name": chunk_id,
+                        "canonical_name": chunk_id,
+                        "definition": "A test concept.",
+                        "evidence_chunk_ids": [chunk_id],
+                    }
+                ],
+                "relations": [],
+            }
+
+    results = _extract_batch_candidates(FakeProvider(), chunks)  # type: ignore[arg-type]
+
+    assert len(calls) == 3
+    assert len(results) == 2
+    assert {result.concepts[0].name for result in results} == {"chunk-1", "chunk-2"}
 
 
 def _make_source(kind: SourceKind, filename: str) -> SourceFile:
