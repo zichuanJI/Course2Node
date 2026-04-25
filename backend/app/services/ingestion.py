@@ -123,6 +123,8 @@ def _ingest_audio(source: SourceFile) -> list[EvidenceChunk]:
                 time_end=segment["end"],
             )
         )
+    if not chunks:
+        raise RuntimeError(f"Audio transcription produced no usable text for {source.filename}.")
     _apply_embeddings(chunks)
     return chunks
 
@@ -156,11 +158,7 @@ def _transcribe_audio(audio_path: Path) -> list[dict[str, float | str]]:
         failures.append(f"external faster-whisper failed: {exc}")
 
     message = " | ".join(failures) if failures else "unknown ASR failure"
-    return [{
-        "start": 0.0,
-        "end": 0.0,
-        "text": f"ASR failed for {audio_path.name}: {message}",
-    }]
+    raise RuntimeError(f"ASR failed for {audio_path.name}: {message}")
 
 
 def _transcribe_with_openai_whisper(audio_path: Path) -> list[dict[str, float | str]]:

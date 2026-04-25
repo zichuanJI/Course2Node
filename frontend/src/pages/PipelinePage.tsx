@@ -172,14 +172,15 @@ export function PipelinePage() {
     async function run() {
       const sess = await getSession(id!) as CourseSession;
       setSession(sess);
+      const shouldReingest = sess.status === "failed";
 
-      const pdfs = sess.source_files.filter((f) => f.kind === "pdf" && !f.ingested);
+      const pdfs = sess.source_files.filter((f) => f.kind === "pdf" && (!f.ingested || shouldReingest));
       for (const f of pdfs) {
         try { await ingestPdf({ session_id: id!, source_id: f.source_id }); }
         catch (e) { toast(`PDF 解析失败: ${String(e)}`, "error"); }
       }
 
-      const audios = sess.source_files.filter((f) => f.kind === "audio" && !f.ingested);
+      const audios = sess.source_files.filter((f) => f.kind === "audio" && (!f.ingested || shouldReingest));
       for (const f of audios) {
         try { await ingestAudio({ session_id: id!, source_id: f.source_id }); }
         catch (e) { toast(`音频解析失败: ${String(e)}`, "error"); }

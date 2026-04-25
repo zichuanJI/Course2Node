@@ -43,6 +43,11 @@ def build_graph(session_id: uuid.UUID) -> GraphArtifact:
         chunks = [chunk for artifact in artifacts for chunk in artifact.chunks]
         if not chunks:
             raise ValueError("No evidence chunks available. Check the uploaded files and ingest output.")
+        if all(_is_asr_failure_chunk(chunk) for chunk in chunks):
+            raise RuntimeError(
+                "Audio transcription failed before graph extraction. "
+                "Install/configure an ASR backend such as openai-whisper or faster-whisper, then re-ingest the audio."
+            )
 
         concepts, edges = _extract_graph_structure(chunks)
         if not concepts:
@@ -380,6 +385,11 @@ def _chunk_to_ref(chunk: EvidenceChunk, term: str) -> EvidenceRef:
         locator=locator,
         snippet=best_snippet(chunk.text, [term]) if chunk.page_start is not None or chunk.source_type.value != "pdf" else "",
     )
+
+
+def _is_asr_failure_chunk(chunk: EvidenceChunk) -> bool:
+    text = chunk.text.lower()
+    return chunk.source_type.value == "audio" and text.startswith("asr failed for ")
 
 
 def _format_seconds(value: float | None) -> str:

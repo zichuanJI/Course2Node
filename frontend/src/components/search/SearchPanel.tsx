@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getGraph, searchGraph } from "../../api/client";
 import { Input } from "../primitives/Input";
@@ -10,6 +10,37 @@ import "./SearchPanel.css";
 
 type FilterKind = "all" | "concepts" | "chunks";
 type SourceFilter = "all" | "pdf" | "audio";
+
+interface EvidenceListItem {
+  key: string;
+  conceptId: string;
+  conceptName: string;
+  sourceType: "pdf" | "audio";
+  locator: string;
+  snippet: string;
+}
+
+function conceptMatchesSource(concept: ConceptNode, source: SourceFilter) {
+  return source === "all" || concept.evidence_refs.some((ref) => ref.source_type === source);
+}
+
+function conceptEvidenceCount(concept: ConceptNode, source: SourceFilter) {
+  return source === "all"
+    ? concept.evidence_refs.length
+    : concept.evidence_refs.filter((ref) => ref.source_type === source).length;
+}
+
+function conceptSourceLabel(concept: ConceptNode) {
+  const sources = new Set(concept.evidence_refs.map((ref) => ref.source_type));
+  if (sources.has("pdf") && sources.has("audio")) return "PDF+音频";
+  if (sources.has("pdf")) return "PDF";
+  if (sources.has("audio")) return "音频";
+  return "无来源";
+}
+
+function sourceLabel(sourceType: "pdf" | "audio") {
+  return sourceType === "pdf" ? "PDF" : "音频";
+}
 
 export function SearchPanel({ sessionId }: { sessionId: string }) {
   const [, setSearchParams] = useSearchParams();
@@ -24,6 +55,40 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
     [],
   );
   const latestQuery = useRef("");
+
+  const conceptById = useMemo(
+    () => new Map(conceptsList.map((concept) => [concept.concept_id, concept])),
+    [conceptsList],
+  );
+
+  const filteredConceptsList = useMemo(
+    () => conceptsList.filter((concept) => conceptMatchesSource(concept, filterSource)),
+    [conceptsList, filterSource],
+  );
+
+  const evidenceList = useMemo(() => {
+    const items: EvidenceListItem[] = [];
+    const seen = new Set<string>();
+
+    for (const concept of conceptsList) {
+      for (const ref of concept.evidence_refs) {
+        if (filterSource !== "all" && ref.source_type !== filterSource) continue;
+        const key = ref.chunk_id || `${concept.concept_id}:${ref.locator}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push({
+          key,
+          conceptId: concept.concept_id,
+          conceptName: concept.name,
+          sourceType: ref.source_type,
+          locator: ref.locator,
+          snippet: ref.snippet || concept.summary || concept.definition,
+        });
+      }
+    }
+
+    return items;
+  }, [conceptsList, filterSource]);
 
   useEffect(() => {
     getGraph(sessionId)
@@ -65,15 +130,22 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
     setRecentQueries([query, ...recentQueries.filter((q) => q !== query)].slice(0, 8));
   }
 
-  const concepts = results?.concepts.filter((c) =>
-    filterSource === "all" ? true : true, // concepts aren't source-filtered
-  ) ?? [];
+  const concepts = results?.concepts.filter((c) => {
+    if (filterSource === "all") return true;
+    const concept = conceptById.get(c.concept_id);
+    return concept ? conceptMatchesSource(concept, filterSource) : false;
+  }) ?? [];
 
   const chunks = results?.chunks.filter((c) => {
     if (filterSource === "pdf") return c.source_type === "pdf";
     if (filterSource === "audio") return c.source_type === "audio";
     return true;
   }) ?? [];
+
+  const showConceptResults = filterKind !== "chunks";
+  const showChunkResults = filterKind !== "concepts";
+  const visibleSearchResultCount =
+    (showConceptResults ? concepts.length : 0) + (showChunkResults ? chunks.length : 0);
 
   return (
     <div className="search-panel">
@@ -100,10 +172,10 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
         ))}
       </div>
 
-      {!query && (
+      {!query && filterKind !== "chunks" && (
         <div className="concept-list">
-          <div className="search-section-label">知识点列表 ({conceptsList.length})</div>
-          {conceptsList.map((concept) => (
+          <div className="search-section-label">知识点列表 ({filteredConceptsList.length})</div>
+          {filteredConceptsList.map((concept) => (
             <button
               key={concept.concept_id}
               className="concept-list-row"
@@ -112,13 +184,37 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
             >
               <span className="concept-list-name">{concept.name}</span>
               <span className="concept-list-meta">
-                {Math.round(concept.importance_score * 100)} · {concept.evidence_refs.length} 证据
+                {Math.round(concept.importance_score * 100)} · {conceptEvidenceCount(concept, filterSource)} 证据 · {conceptSourceLabel(concept)}
               </span>
             </button>
           ))}
-          {conceptsList.length === 0 && (
+          {filteredConceptsList.length === 0 && (
             <p style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--control-text-color)" }}>
-              暂无知识点数据
+              没有符合筛选条件的知识点
+            </p>
+          )}
+        </div>
+      )}
+
+      {!query && filterKind !== "concepts" && (
+        <div className="concept-list">
+          <div className="search-section-label">内容片段 ({evidenceList.length})</div>
+          {evidenceList.map((item) => (
+            <button
+              key={item.key}
+              className="concept-list-row concept-list-row-chunk"
+              onClick={() => setSearchParams({ concept: item.conceptId })}
+              type="button"
+            >
+              <span className="concept-list-name">{item.snippet || "无可显示片段"}</span>
+              <span className="concept-list-meta">
+                {sourceLabel(item.sourceType)}{item.locator ? ` · ${item.locator}` : ""} · {item.conceptName}
+              </span>
+            </button>
+          ))}
+          {evidenceList.length === 0 && (
+            <p style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--control-text-color)" }}>
+              没有符合筛选条件的内容片段
             </p>
           )}
         </div>
@@ -139,7 +235,7 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
 
       {results && (
         <div className="search-results">
-          {filterKind !== "chunks" && concepts.length > 0 && (
+          {showConceptResults && concepts.length > 0 && (
             <div>
               <div className="search-section-label">知识点 ({concepts.length})</div>
               {concepts.map((c) => (
@@ -152,13 +248,14 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
                   <div className="search-concept-meta">
                     {c.canonical_name !== c.name && `规范名：${c.canonical_name} · `}
                     来源数 {c.source_count}
+                    {conceptById.get(c.concept_id) ? ` · ${conceptSourceLabel(conceptById.get(c.concept_id)!)} ` : ""}
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {filterKind !== "concepts" && chunks.length > 0 && (
+          {showChunkResults && chunks.length > 0 && (
             <div>
               <div className="search-section-label">内容片段 ({chunks.length})</div>
               {chunks.map((c) => (
@@ -175,7 +272,7 @@ export function SearchPanel({ sessionId }: { sessionId: string }) {
             </div>
           )}
 
-          {concepts.length === 0 && chunks.length === 0 && (
+          {visibleSearchResultCount === 0 && (
             <p style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--control-text-color)" }}>
               未找到相关内容
             </p>

@@ -138,6 +138,18 @@
   white-space: nowrap;
 }
 
+.concept-list-row-chunk {
+  grid-template-columns: 1fr;
+}
+
+.concept-list-row-chunk .concept-list-name {
+  display: -webkit-box;
+  line-height: 1.45;
+  white-space: normal;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
 .concept-list-meta {
   color: var(--control-text-color);
   font-family: var(--font-mono);

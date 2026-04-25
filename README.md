@@ -1,144 +1,196 @@
 # Course2Node
 
-把课程 `PDF + 音频` 转成“每个节点都是知识点”的图谱式课程理解系统。
+Course2Node turns lecture PDFs, slides, notes, and audio into a knowledge-point graph for classroom demos. The current MVP focuses on the full backend flow: upload files, extract text chunks, generate semantic embeddings, ask an LLM to extract concepts and relations, then return a graph that the frontend can render and inspect.
 
-## V1 定位
+## What Works Now
 
-- 主图中的每个节点都是 `知识点`
-- PDF 页码和音频时间戳不做主图节点，只作为知识点的 `evidence_refs`
-- 主图边只保留知识点之间的关系：
-  - `RELATES_TO`
-  - `CO_OCCURS_WITH`
-  - `CONTAINS`（主题簇到知识点）
-- 当前实现默认使用本地 JSON artifact 持久化，方便课程项目直接启动和演示
+- PDF ingest: PDF pages are rendered and sent to Kimi for page-aware text extraction.
+- Audio ingest: lecture audio is transcribed with local Whisper or faster-whisper.
+- Embedding: chunks use a real embedding provider. The default is local `BAAI/bge-m3`.
+- Graph extraction: an OpenAI-compatible chat model extracts concepts, node attributes, evidence references, and relations.
+- Storage: sessions, uploads, chunks, graphs, and notes are stored as local JSON artifacts.
+- Frontend: Vite/React UI connects to the FastAPI backend and visualizes the generated graph.
 
-## 数据流
-
-```text
-上传 PDF / 音频
-  -> ingest/pdf + ingest/audio
-  -> 统一证据块（chunk）抽取
-  -> LLM 知识点抽取 / 规则清洗 / 关系构图
-  -> 构建知识点图谱
-  -> 搜索知识点 / 查看子图
-  -> 生成结构化笔记
-  -> 导出 markdown / txt / tex
-```
-
-## 接口
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/health` | 健康检查 |
-| GET | `/sessions/` | 列出已有 session |
-| GET | `/sessions/{session_id}` | 获取 session 详情 |
-| GET | `/sessions/{session_id}/status` | 获取 session 状态与统计 |
-| POST | `/upload/pdf` | 上传 PDF |
-| POST | `/upload/audio` | 上传音频 |
-| POST | `/upload/pdfs` | 批量上传 PDF，可选自动 ingest + build |
-| POST | `/ingest/pdf` | 解析 PDF，生成证据块 |
-| POST | `/ingest/audio` | 转写音频，生成证据块 |
-| POST | `/build_graph` | 构建知识点主图 |
-| POST | `/search` | 搜索知识点与证据片段 |
-| GET | `/graph/subgraph` | 查看某个知识点的局部关系图 |
-| GET | `/graph/{session_id}` | 获取完整 graph artifact |
-| POST | `/generate_notes` | 根据主题生成结构化笔记 |
-| GET | `/notes/{session_id}` | 获取生成后的笔记 JSON |
-| GET | `/export/{session_id}/{fmt}` | 导出 `markdown/txt/tex` |
-
-## 后端结构
+## Repository Layout
 
 ```text
-backend/app/
-├── api/routes/
-│   ├── upload.py
-│   ├── sessions.py
-│   ├── graph.py
-│   └── export.py
-├── services/
-│   ├── ingestion.py
-│   ├── graph_builder.py
-│   ├── search.py
-│   ├── notes.py
-│   └── text_utils.py
-├── core/types.py
-├── storage/local.py
-└── main.py
+backend/
+  app/
+    api/routes/        FastAPI route handlers
+    services/          ingestion, embedding, graph extraction, search, notes
+    providers/         LLM, embedding, and search provider adapters
+    storage/local.py   local artifact persistence
+  tests/               backend service tests
+frontend/
+  src/                 React app, graph UI, search panel, API client
+artifacts/             local runtime data, ignored by git
+docker-compose.yml     optional two-service local stack
 ```
 
-当前真正启用的是上面这条 `FastAPI + local JSON artifacts` 主线。
+## Required Runtime
 
-仓库中还保留了 `backend/app/db/`、`backend/app/pipeline/`、`backend/app/workers/` 等下一阶段架构骨架，用于未来切换到 `SQLAlchemy + Celery`。这些模块目前未接入 `main.py`，不属于当前 MVP 运行路径。
+- Python 3.11 or 3.12
+- Node.js 20+ or 22+
+- `ffmpeg` for audio conversion and Whisper transcription
+- Network access on first model use, because `bge-m3` and Whisper models may download weights
+- API keys for Kimi and the graph LLM
 
-## 本地启动
+On macOS, install `ffmpeg` with:
 
-### 方式一：Docker
+```bash
+brew install ffmpeg
+```
+
+## Configuration
+
+Copy the sample env file at the repository root:
 
 ```bash
 cp .env.example .env
-docker compose up --build
 ```
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000/docs`
+Never commit `.env` or real API keys. The backend loads `.env` from the repository root.
 
-### 方式二：本地
+### Core Settings
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `LOCAL_STORAGE_PATH` | Yes | Where uploaded files and generated JSON artifacts are stored. Prefer an absolute path for local development. Use `/artifacts` when running Docker. |
+| `GRAPH_LLM_BASE_URL` | Yes | OpenAI-compatible chat API base URL, for example `https://api.deepseek.com/v1`. |
+| `GRAPH_LLM_API_KEY` | Yes | API key for the graph extraction model. |
+| `GRAPH_LLM_MODEL` | Yes | Chat model name used to extract concepts and relations. |
+| `KIMI_BASE_URL` | Yes | Kimi OpenAI-compatible base URL. Keep `https://api.moonshot.cn/v1` unless the provider changes. |
+| `KIMI_API_KEY` | Yes for PDF | Kimi API key for PDF text extraction. |
+| `KIMI_MODEL` | Yes for PDF | Kimi model name. Current target is `kimi-k2.6`. |
+| `EMBED_PROVIDER` | Yes | `bge_m3`, `openai`, or `openai_compatible`. Default is local `bge_m3`. |
+| `EMBEDDING_LOCAL_MODEL_NAME` | Yes for bge-m3 | Default `BAAI/bge-m3`. First run downloads the model. |
+| `WHISPER_MODEL_SIZE` | Yes for audio | Whisper model size, for example `base`, `small`, or `medium`. |
+| `WHISPER_LANGUAGE` | Optional | `auto` by default. Set `zh` or `en` if auto-detection is unstable. |
+| `VITE_API_BASE_URL` | Optional | Frontend API base URL. Defaults to `http://localhost:8000`. For local Vite runs, put it in `frontend/.env.local`; Docker injects it from `docker-compose.yml`. |
+
+Recommended local `.env` shape:
+
+```bash
+STORAGE_BACKEND=local
+LOCAL_STORAGE_PATH=/absolute/path/to/Course2Note/artifacts
+
+GRAPH_LLM_BASE_URL=https://api.deepseek.com/v1
+GRAPH_LLM_API_KEY=sk-your-graph-llm-key
+GRAPH_LLM_MODEL=deepseek-chat
+GRAPH_LLM_TIMEOUT_SECONDS=90
+
+KIMI_BASE_URL=https://api.moonshot.cn/v1
+KIMI_API_KEY=sk-your-kimi-key
+KIMI_MODEL=kimi-k2.6
+KIMI_TIMEOUT_SECONDS=90
+
+EMBED_PROVIDER=bge_m3
+EMBEDDING_LOCAL_MODEL_NAME=BAAI/bge-m3
+EMBEDDING_LOCAL_DEVICE=cpu
+EMBEDDING_LOCAL_USE_FP16=false
+
+WHISPER_MODEL_SIZE=base
+WHISPER_LANGUAGE=auto
+```
+
+If you use an OpenAI-compatible embedding API instead of local bge-m3:
+
+```bash
+EMBED_PROVIDER=openai_compatible
+EMBEDDING_BASE_URL=https://your-embedding-provider/v1
+EMBEDDING_API_KEY=sk-your-embedding-key
+EMBEDDING_MODEL=your-embedding-model
+```
+
+## Local Development
+
+Start the backend:
 
 ```bash
 cd backend
 python3 -m venv .venv
-./.venv/bin/pip install -r requirements.txt
-./.venv/bin/uvicorn app.main:app --reload
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+Start the frontend in another terminal:
 
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-## 当前实现说明
-
-- PDF 解析主路径为：本地库只负责把页面渲染成图片，再交给 `Kimi` 提取页面文本与结构
-- 音频转写优先使用 `openai-whisper`
-- 如果当前环境没有装好 Whisper，音频 ingest 会写入降级提示文本，方便前端流程先跑通
-- 知识点抽取当前支持两条路径：
-  - 配置 `graph_llm_*` 后，优先走 OpenAI-compatible LLM 抽取 `concepts + relations`
-  - 未配置 LLM 时，回退到仓库里的 `规则 + 统计` 版本
-- chunk 与 concept 的 `embedding` 已预留为真实向量接口，不再推荐使用本地哈希向量
-- 图结果当前仍保存在本地 `graph.json`，课堂展示版不依赖 Neo4j
-- session、ingest artifact、graph artifact、note artifact 当前都保存在 `backend/artifacts/<session_id>/` 下
-- 上传新文件到已有 session 时，会使旧 graph/note 失效，避免继续读取过期结果
-
-## 模型配置
-
-课堂展示版建议配置一条 OpenAI-compatible 接口，便于切换 `DeepSeek / Qwen / OpenAI`：
+If the backend is not on `http://localhost:8000`, create `frontend/.env.local`:
 
 ```bash
-GRAPH_LLM_BASE_URL=
-GRAPH_LLM_API_KEY=
-GRAPH_LLM_MODEL=
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-PDF ingest 主路径默认使用 Kimi 抽页内容：
+Open:
+
+- Frontend: `http://127.0.0.1:5173`
+- Backend docs: `http://127.0.0.1:8000/docs`
+- Health check: `http://127.0.0.1:8000/health`
+
+## Docker Development
+
+Docker is useful for a clean demo environment. Before starting, set this in `.env`:
 
 ```bash
-KIMI_BASE_URL=https://api.moonshot.cn/v1
-KIMI_API_KEY=
-KIMI_MODEL=kimi-k2.6
+LOCAL_STORAGE_PATH=/artifacts
 ```
 
-embedding 当前默认走本地部署的 `bge-m3`：
+Then run:
 
 ```bash
-EMBED_PROVIDER=bge_m3
-EMBEDDING_LOCAL_MODEL_NAME=BAAI/bge-m3
-EMBEDDING_LOCAL_DEVICE=cpu
+docker compose up --build
 ```
 
-## 测试
+Docker exposes the same ports: frontend on `5173`, backend on `8000`.
+
+## Processing Flow
+
+1. Upload one or more PDFs and/or audio files.
+2. Run ingest. PDFs go through Kimi page extraction. Audio goes through Whisper transcription.
+3. Each text chunk receives an embedding.
+4. `build_graph` sends chunks to the configured graph LLM.
+5. The backend cleans concepts, validates evidence references, builds relations, and writes `graph.json`.
+6. The frontend loads the graph, search index, evidence cards, and node detail panel from backend artifacts.
+
+Runtime artifacts are written under `LOCAL_STORAGE_PATH/<session_id>/`.
+
+## Testing
+
+Backend tests:
 
 ```bash
 cd backend
-./.venv/bin/pytest
+.venv/bin/python -m pytest
 ```
+
+Backend syntax check:
+
+```bash
+cd backend
+.venv/bin/python -m compileall app tests
+```
+
+Frontend production build:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Troubleshooting
+
+- `Kimi PDF extraction is not configured`: set `KIMI_API_KEY` and `KIMI_MODEL`.
+- `LLM graph extraction returned no valid concepts`: check `GRAPH_LLM_*`, inspect whether ingest produced meaningful chunks, and increase `GRAPH_LLM_TIMEOUT_SECONDS` if needed.
+- `ASR failed`: install `ffmpeg`, ensure `faster-whisper` or `openai-whisper` is installed in the backend venv, and try a smaller `WHISPER_MODEL_SIZE`.
+- First run is slow: local bge-m3 and Whisper may download model weights and initialize on CPU.
+- Old courses disappear between restarts: use a stable absolute `LOCAL_STORAGE_PATH`.
+
+## Notes
+
+The current MVP uses local JSON artifacts instead of Neo4j. Neo4j or SQL-backed persistence can be added later, but the classroom demo path does not require it.

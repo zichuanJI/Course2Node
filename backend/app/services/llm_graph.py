@@ -547,6 +547,8 @@ def _looks_like_heading(text: str) -> bool:
 def _is_low_signal_chunk(chunk: EvidenceChunk) -> bool:
     text = normalize_text(chunk.text)
     lowered = text.lower()
+    if chunk.source_type.value == "audio" and lowered.startswith("asr failed for "):
+        return True
     if len(text) < 24:
         return True
     if text.count("知识点") >= 3:

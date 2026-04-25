@@ -142,7 +142,7 @@ def test_ingest_source_marks_session_failed_when_pdf_ingestion_raises(tmp_storag
     assert stored_session.error_message == "pdf parser exploded"
 
 
-def test_transcribe_audio_returns_degraded_segment_when_all_backends_fail(tmp_storage, tmp_path, monkeypatch):
+def test_transcribe_audio_raises_when_all_backends_fail(tmp_storage, tmp_path, monkeypatch):
     import app.services.ingestion as ingestion_module
 
     audio_path = tmp_path / "lecture.mp3"
@@ -158,12 +158,44 @@ def test_transcribe_audio_returns_degraded_segment_when_all_backends_fail(tmp_st
     monkeypatch.setattr(ingestion_module, "_transcribe_with_local_faster_whisper", fail_with("missing faster whisper"))
     monkeypatch.setattr(ingestion_module, "_transcribe_with_external_faster_whisper", fail_with("external runner down"))
 
-    segments = _transcribe_audio(audio_path)
+    with pytest.raises(RuntimeError, match="ASR failed for lecture.mp3") as exc_info:
+        _transcribe_audio(audio_path)
 
-    assert len(segments) == 1
-    assert segments[0]["start"] == 0.0
-    assert "ASR failed for lecture.mp3" in str(segments[0]["text"])
-    assert "missing whisper" in str(segments[0]["text"])
+    assert "missing whisper" in str(exc_info.value)
+
+
+def test_build_graph_rejects_asr_failure_chunks_before_llm(tmp_storage):
+    audio_source = _make_source(SourceKind.audio, "lecture.mp3")
+    session = CourseSession(
+        course_title="CS229",
+        lecture_title="Broken Audio",
+        source_files=[audio_source],
+    )
+    save_session(session)
+    save_ingest_artifact(
+        IngestArtifact(
+            session_id=session.session_id,
+            source_id=audio_source.source_id,
+            source_kind=SourceKind.audio,
+            chunks=[
+                _make_chunk(
+                    chunk_id=f"{audio_source.source_id}-a1",
+                    source_id=str(audio_source.source_id),
+                    source_type=SourceKind.audio,
+                    text="ASR failed for lecture.mp3: package `whisper` not installed",
+                    time_start=0.0,
+                    time_end=0.0,
+                )
+            ],
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="Audio transcription failed before graph extraction"):
+        build_graph(session.session_id)
+
+    stored_session = load_session(session.session_id)
+    assert stored_session.status == SessionStatus.failed
+    assert "Audio transcription failed before graph extraction" in (stored_session.error_message or "")
 
 
 def test_build_graph_uses_llm_candidates_when_configured(tmp_storage, monkeypatch):
