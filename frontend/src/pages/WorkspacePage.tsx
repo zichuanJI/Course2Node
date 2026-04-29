@@ -28,6 +28,7 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
   const [session, setSession] = useState<CourseSession | null>(null);
   const [searchCollapsed, setSearchCollapsed] = useState(false);
   const [notesCollapsed, setNotesCollapsed] = useState(false);
+  const [rightTool, setRightTool] = useState<"notes" | "exam">("notes");
 
   useEffect(() => {
     if (!id) return;
@@ -162,7 +163,7 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
         </div>
       </div>
 
-      {/* Right: Notes */}
+      {/* Right: Study tools */}
       <div className="ws-col ws-col-notes">
         {notesCollapsed ? (
           <div
@@ -178,15 +179,31 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/>
               </svg>
             </button>
-            <span className="ws-rail-label">笔记</span>
+            <span className="ws-rail-label">工具</span>
           </div>
         ) : (
           <>
             <div className="ws-head">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/>
-              </svg>
-              <span className="ws-title">结构化笔记</span>
+              <div className="ws-tool-tabs" role="tablist" aria-label="学习工具">
+                <button
+                  className={clsx("ws-tool-tab", rightTool === "notes" && "ws-tool-tab-active")}
+                  onClick={() => setRightTool("notes")}
+                  type="button"
+                  role="tab"
+                  aria-selected={rightTool === "notes"}
+                >
+                  笔记
+                </button>
+                <button
+                  className={clsx("ws-tool-tab", rightTool === "exam" && "ws-tool-tab-active")}
+                  onClick={() => setRightTool("exam")}
+                  type="button"
+                  role="tab"
+                  aria-selected={rightTool === "exam"}
+                >
+                  出卷
+                </button>
+              </div>
               <div style={{ flex: 1 }} />
               <button
                 className="btn-icon"
@@ -200,7 +217,23 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
               </button>
             </div>
             <div className="ws-notes-body">
-              <NoteView sessionId={id} initialNote={note} />
+              {rightTool === "notes" ? (
+                <NoteView sessionId={id} initialNote={note} />
+              ) : (
+                <div className="ws-exam-placeholder">
+                  <div className="ws-exam-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 11h6" />
+                      <path d="M9 15h4" />
+                      <path d="M5 3h14v18l-2-1-2 1-2-1-2 1-2-1-2 1-2-1z" />
+                    </svg>
+                  </div>
+                  <h2>出卷功能预留</h2>
+                  <p>
+                    后续会基于知识点重要度、关系密度和课程目标生成题目。当前版本先保留入口，不触发后端请求。
+                  </p>
+                </div>
+              )}
             </div>
           </>
         )}

@@ -30,7 +30,9 @@ from app.config import settings
 from app.storage.local import load_session, save_ingest_artifact, save_session
 
 
-def test_build_graph_search_and_generate_notes_flow(tmp_storage):
+def test_build_graph_search_and_generate_notes_flow(tmp_storage, monkeypatch):
+    import app.services.notes as notes_module
+
     pdf_source = _make_source(SourceKind.pdf, "lecture.pdf")
     audio_source = _make_source(SourceKind.audio, "lecture.mp3")
     session = CourseSession(
@@ -90,16 +92,64 @@ def test_build_graph_search_and_generate_notes_flow(tmp_storage):
     assert search.chunks
     assert search.concepts[0].score >= search.concepts[-1].score
 
-    note = generate_notes(GenerateNotesRequest(session_id=session.session_id, topic="gradient descent"))
+    monkeypatch.setattr(
+        notes_module,
+        "_generate_note_with_llm",
+        lambda graph, lecture_title, topic="": notes_module.LLMNoteDocument.model_validate(
+            {
+                "title": "Linear Regression - 图谱笔记",
+                "summary": "围绕线性回归和梯度下降生成的学习笔记。",
+                "sections": [
+                    {
+                        "title": "线性回归与优化",
+                        "content_md": "线性回归使用加权特征建模目标值，梯度下降用于最小化损失。",
+                        "concept_ids": [graph.concepts[0].concept_id],
+                    }
+                ],
+            }
+        ),
+    )
+
+    note = generate_notes(GenerateNotesRequest(session_id=session.session_id))
 
     assert note.sections
     assert note.summary
     assert note.sections[0].references == []
+    assert note.topic == "当前知识图谱"
 
     stored_session = load_session(session.session_id)
     assert stored_session.status == SessionStatus.notes_ready
     assert stored_session.stats.chunk_count == 3
     assert stored_session.stats.concept_count == len(graph.concepts)
+
+
+def test_generate_notes_requires_graph_llm_when_not_mocked(tmp_storage, monkeypatch):
+    source = _make_source(SourceKind.pdf, "lecture.pdf")
+    session = CourseSession(course_title="CS229", lecture_title="Linear Regression", source_files=[source])
+    save_session(session)
+    save_ingest_artifact(
+        IngestArtifact(
+            session_id=session.session_id,
+            source_id=source.source_id,
+            source_kind=SourceKind.pdf,
+            chunks=[
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-d1-1",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="Linear regression uses gradient descent to minimize loss.",
+                )
+            ],
+        )
+    )
+    graph = build_graph(session.session_id)
+    assert graph.concepts
+
+    monkeypatch.setattr(settings, "graph_llm_api_key", "")
+    monkeypatch.setattr(settings, "graph_llm_model", "")
+
+    with pytest.raises(RuntimeError, match="Notes LLM is not configured"):
+        generate_notes(GenerateNotesRequest(session_id=session.session_id))
 
 
 def test_build_graph_marks_session_failed_when_artifacts_are_missing(tmp_storage):

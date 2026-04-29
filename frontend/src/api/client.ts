@@ -136,7 +136,7 @@ export async function fetchSubgraph(sessionId: string, conceptId: string, depth 
   return readJson<SubgraphResponse>(response);
 }
 
-export async function generateNotes(payload: { session_id: string; topic: string; concept_ids?: string[] }) {
+export async function generateNotes(payload: { session_id: string; topic?: string; concept_ids?: string[] }) {
   const response = await fetch(`${BASE}/generate_notes`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

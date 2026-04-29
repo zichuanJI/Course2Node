@@ -6,6 +6,7 @@ from app.storage.local import save_session
 
 def test_pdf_api_flow_and_reupload_invalidates_stale_graph_and_notes(client, monkeypatch):
     import app.services.ingestion as ingestion_module
+    import app.services.notes as notes_module
 
     def fake_pdf_ingest(source):
         source_id = str(source.source_id)
@@ -67,9 +68,26 @@ def test_pdf_api_flow_and_reupload_invalidates_stale_graph_and_notes(client, mon
     assert search_payload["concepts"]
     assert search_payload["chunks"]
 
+    monkeypatch.setattr(
+        notes_module,
+        "_generate_note_with_llm",
+        lambda graph, lecture_title, topic="": notes_module.LLMNoteDocument.model_validate(
+            {
+                "title": "Linear Regression - 图谱笔记",
+                "summary": "基于当前图谱生成的课堂笔记。",
+                "sections": [
+                    {
+                        "title": "梯度下降",
+                        "content_md": "梯度下降反复更新参数，帮助线性回归收敛。",
+                        "concept_ids": [graph.concepts[0].concept_id],
+                    }
+                ],
+            }
+        ),
+    )
     note_response = client.post(
         "/generate_notes",
-        json={"session_id": session_id, "topic": "gradient descent"},
+        json={"session_id": session_id},
     )
     assert note_response.status_code == 200
     note_payload = note_response.json()
@@ -77,7 +95,7 @@ def test_pdf_api_flow_and_reupload_invalidates_stale_graph_and_notes(client, mon
 
     markdown_response = client.get(f"/export/{session_id}/markdown")
     assert markdown_response.status_code == 200
-    assert "# Linear Regression - gradient descent" in markdown_response.text
+    assert "# Linear Regression - 图谱笔记" in markdown_response.text
 
     assert client.get(f"/graph/{session_id}").status_code == 200
     assert client.get(f"/notes/{session_id}").status_code == 200

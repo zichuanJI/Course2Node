@@ -246,5 +246,5 @@ class SearchRequest(BaseModel):
 
 class GenerateNotesRequest(BaseModel):
     session_id: UUID
-    topic: str
+    topic: str = ""
     concept_ids: list[str] = Field(default_factory=list)
