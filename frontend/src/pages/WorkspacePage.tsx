@@ -218,7 +218,7 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
             </div>
             <div className="ws-notes-body">
               {rightTool === "notes" ? (
-                <NoteView sessionId={id} initialNote={note} />
+                <NoteView sessionId={id} initialNote={note} onNoteChange={setNote} />
               ) : (
                 <div className="ws-exam-placeholder">
                   <div className="ws-exam-icon">

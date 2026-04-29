@@ -52,7 +52,7 @@ def build_graph(session_id: uuid.UUID) -> GraphArtifact:
         if not concepts:
             raise ValueError("No concepts could be extracted from the ingested sources.")
         _apply_concept_embeddings(concepts)
-        _assign_importance_scores(concepts, edges)
+        _assign_graph_metrics(concepts, edges)
         clusters = _build_clusters(concepts, edges)
         graph = GraphArtifact(
             session_id=session_id,
@@ -295,9 +295,13 @@ def _apply_concept_embeddings(concepts: list[ConceptNode]) -> None:
         concept.embedding = vector
 
 
-def _assign_importance_scores(concepts: list[ConceptNode], edges: list[GraphEdge]) -> None:
+def _assign_graph_metrics(concepts: list[ConceptNode], edges: list[GraphEdge]) -> None:
     concept_ids = {concept.concept_id for concept in concepts}
-    degrees: dict[str, float] = {concept_id: 0.0 for concept_id in concept_ids}
+    if not concept_ids:
+        return
+
+    adjacency: dict[str, set[str]] = {concept_id: set() for concept_id in concept_ids}
+    weighted_degrees: dict[str, float] = {concept_id: 0.0 for concept_id in concept_ids}
 
     for edge in edges:
         if edge.source not in concept_ids or edge.target not in concept_ids:
@@ -308,15 +312,108 @@ def _assign_importance_scores(concepts: list[ConceptNode], edges: list[GraphEdge
             weight = 0.5 + float(edge.properties.get("normalized_weight", 0.0))
         else:
             continue
-        degrees[edge.source] += weight
-        degrees[edge.target] += weight
+        adjacency[edge.source].add(edge.target)
+        adjacency[edge.target].add(edge.source)
+        weighted_degrees[edge.source] += weight
+        weighted_degrees[edge.target] += weight
 
-    max_degree = max(degrees.values(), default=0.0)
-    if max_degree <= 0:
-        return
+    n = len(concept_ids)
+    degree_centrality = {
+        concept_id: (len(neighbors) / (n - 1) if n > 1 else 0.0)
+        for concept_id, neighbors in adjacency.items()
+    }
+    max_weighted_degree = max(weighted_degrees.values(), default=0.0)
+    weighted_degree_centrality = {
+        concept_id: (weighted_degree / max_weighted_degree if max_weighted_degree > 0 else 0.0)
+        for concept_id, weighted_degree in weighted_degrees.items()
+    }
+    betweenness_centrality = _betweenness_centrality(adjacency)
+    closeness_centrality = _closeness_centrality(adjacency)
 
     for concept in concepts:
-        concept.importance_score = round(degrees[concept.concept_id] / max_degree, 4)
+        concept_id = concept.concept_id
+        metrics = {
+            "degree_centrality": degree_centrality.get(concept_id, 0.0),
+            "weighted_degree_centrality": weighted_degree_centrality.get(concept_id, 0.0),
+            "betweenness_centrality": betweenness_centrality.get(concept_id, 0.0),
+            "closeness_centrality": closeness_centrality.get(concept_id, 0.0),
+        }
+        concept.graph_metrics = {key: round(max(0.0, min(1.0, value)), 4) for key, value in metrics.items()}
+        concept.importance_score = round(
+            max(
+                0.0,
+                min(
+                    1.0,
+                    concept.graph_metrics["weighted_degree_centrality"] * 0.45
+                    + concept.graph_metrics["betweenness_centrality"] * 0.25
+                    + concept.graph_metrics["closeness_centrality"] * 0.20
+                    + concept.graph_metrics["degree_centrality"] * 0.10,
+                ),
+            ),
+            4,
+        )
+
+
+def _betweenness_centrality(adjacency: dict[str, set[str]]) -> dict[str, float]:
+    nodes = list(adjacency)
+    scores = {node: 0.0 for node in nodes}
+    if len(nodes) <= 2:
+        return scores
+
+    for source in nodes:
+        stack: list[str] = []
+        predecessors: dict[str, list[str]] = {node: [] for node in nodes}
+        path_counts = dict.fromkeys(nodes, 0.0)
+        path_counts[source] = 1.0
+        distances = dict.fromkeys(nodes, -1)
+        distances[source] = 0
+        queue = [source]
+
+        for current in queue:
+            stack.append(current)
+            for neighbor in adjacency[current]:
+                if distances[neighbor] < 0:
+                    queue.append(neighbor)
+                    distances[neighbor] = distances[current] + 1
+                if distances[neighbor] == distances[current] + 1:
+                    path_counts[neighbor] += path_counts[current]
+                    predecessors[neighbor].append(current)
+
+        dependencies = dict.fromkeys(nodes, 0.0)
+        while stack:
+            node = stack.pop()
+            for predecessor in predecessors[node]:
+                if path_counts[node] > 0:
+                    share = path_counts[predecessor] / path_counts[node]
+                    dependencies[predecessor] += share * (1.0 + dependencies[node])
+            if node != source:
+                scores[node] += dependencies[node]
+
+    # Undirected graph normalization: divide duplicated paths, then scale to 0..1.
+    scale = 1.0 / ((len(nodes) - 1) * (len(nodes) - 2))
+    return {node: score * scale for node, score in scores.items()}
+
+
+def _closeness_centrality(adjacency: dict[str, set[str]]) -> dict[str, float]:
+    scores: dict[str, float] = {}
+    n = len(adjacency)
+    for source in adjacency:
+        distances = {source: 0}
+        queue = [source]
+        for current in queue:
+            for neighbor in adjacency[current]:
+                if neighbor in distances:
+                    continue
+                distances[neighbor] = distances[current] + 1
+                queue.append(neighbor)
+
+        reachable = len(distances) - 1
+        total_distance = sum(distances.values())
+        if reachable <= 0 or total_distance <= 0 or n <= 1:
+            scores[source] = 0.0
+            continue
+        scores[source] = (reachable / total_distance) * (reachable / (n - 1))
+    return scores
 
 
 def _is_asr_failure_chunk(chunk: EvidenceChunk) -> bool:

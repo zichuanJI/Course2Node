@@ -10,9 +10,11 @@ import "./NoteView.css";
 export function NoteView({
   sessionId,
   initialNote,
+  onNoteChange,
 }: {
   sessionId: string;
   initialNote: NoteDocument | null;
+  onNoteChange?: (note: NoteDocument) => void;
 }) {
   const [note, setNote] = useState<NoteDocument | null>(initialNote);
   const [generating, setGenerating] = useState(false);
@@ -28,6 +30,7 @@ export function NoteView({
       await generateNotes({ session_id: sessionId });
       const fresh = await getNote(sessionId);
       setNote(fresh);
+      onNoteChange?.(fresh);
     } catch (error) {
       toast(error instanceof Error ? `笔记生成失败：${error.message}` : "笔记生成失败", "error");
     } finally {

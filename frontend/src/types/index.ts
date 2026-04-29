@@ -63,6 +63,7 @@ export interface ConceptNode {
   applications: string[];
   embedding: number[];
   importance_score: number;
+  graph_metrics: Record<string, number>;
   source_count?: number;
   evidence_refs?: EvidenceRef[];
 }

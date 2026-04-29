@@ -121,6 +121,7 @@ class ConceptNode(BaseModel):
     applications: list[str] = Field(default_factory=list)
     embedding: list[float] = Field(default_factory=list)
     importance_score: float = 0.0
+    graph_metrics: dict[str, float] = Field(default_factory=dict)
     source_count: int = Field(default=0, exclude=True)
     evidence_refs: list[EvidenceRef] = Field(default_factory=list, exclude=True)
 

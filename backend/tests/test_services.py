@@ -24,7 +24,7 @@ from app.services.llm_graph import (
     _select_graph_input_chunks,
 )
 from app.services.kimi_pdf import ExtractedPdfTextBlock, split_kimi_file_content
-from app.services.notes import generate_notes
+from app.services.notes import _build_notes_prompt, _clean_section_markdown, _normalize_note_markdown, generate_notes
 from app.services.search import search_graph
 from app.config import settings
 from app.storage.local import load_session, save_ingest_artifact, save_session
@@ -86,6 +86,17 @@ def test_build_graph_search_and_generate_notes_flow(tmp_storage, monkeypatch):
     assert graph.concepts
     assert graph.topic_clusters
     assert any("gradient" in concept.canonical_name for concept in graph.concepts)
+    assert all(0.0 <= concept.importance_score <= 1.0 for concept in graph.concepts)
+    assert all(
+        {"degree_centrality", "weighted_degree_centrality", "betweenness_centrality", "closeness_centrality"}
+        <= set(concept.graph_metrics)
+        for concept in graph.concepts
+    )
+    assert all(
+        0.0 <= metric <= 1.0
+        for concept in graph.concepts
+        for metric in concept.graph_metrics.values()
+    )
 
     search = search_graph(session.session_id, "gradient descent", limit=5)
     assert search.concepts
@@ -121,6 +132,132 @@ def test_build_graph_search_and_generate_notes_flow(tmp_storage, monkeypatch):
     assert stored_session.status == SessionStatus.notes_ready
     assert stored_session.stats.chunk_count == 3
     assert stored_session.stats.concept_count == len(graph.concepts)
+
+
+def test_notes_prompt_includes_adaptive_style_and_graph_metrics(tmp_storage):
+    source = _make_source(SourceKind.pdf, "lecture.pdf")
+    session = CourseSession(course_title="CS229", lecture_title="Information Theory", source_files=[source])
+    save_session(session)
+    save_ingest_artifact(
+        IngestArtifact(
+            session_id=session.session_id,
+            source_id=source.source_id,
+            source_kind=SourceKind.pdf,
+            chunks=[
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-p1-1",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="Entropy measures uncertainty in a probability distribution. Mutual information compares joint and independent distributions.",
+                ),
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-p1-2",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="The chain rule connects joint entropy, conditional entropy, and mutual information.",
+                ),
+            ],
+        )
+    )
+
+    graph = build_graph(session.session_id)
+    prompt = _build_notes_prompt(graph, lecture_title="Information Theory")
+
+    assert "看完能掌握本讲" in prompt
+    assert "根据原课程内容自适应" in prompt
+    assert "$$" in prompt
+    assert "importance_score" in prompt
+    assert "weighted_degree_centrality" in prompt
+    assert "betweenness_centrality" in prompt
+    assert "closeness_centrality" in prompt
+    assert "不要为了形式补公式" in prompt
+    assert "不要写引用、页码、来源、证据或 chunk_id" in prompt
+    assert "标题单独一行" in prompt
+    assert "列表项每条单独一行" in prompt
+
+
+def test_note_markdown_normalization_preserves_renderable_blocks():
+    collapsed = (
+        "## SQL概述 SQL是关系数据库的标准语言。 "
+        "- **数据定义语言（DDL）**：定义数据库结构。 "
+        "- **数据查询语言（DQL）**：核心是SELECT语句。 "
+        "### SELECT语句的基本结构 ```sql SELECT * FROM Student; ``` "
+        "### WHERE子句 WHERE子句用于筛选元组。"
+    )
+
+    markdown = _normalize_note_markdown(collapsed)
+
+    assert "## SQL概述\n\nSQL是关系数据库的标准语言。" in markdown
+    assert "\n- **数据定义语言（DDL）**：定义数据库结构。" in markdown
+    assert "\n- **数据查询语言（DQL）**：核心是SELECT语句。" in markdown
+    assert "### SELECT语句的基本结构\n\n```sql\nSELECT * FROM Student;\n```" in markdown
+    assert "### WHERE子句\n\nWHERE子句用于筛选元组。" in markdown
+
+
+def test_section_markdown_removes_duplicate_leading_heading():
+    markdown = _clean_section_markdown(
+        "单表查询",
+        "## 单表查询 单表查询是对单个表进行数据检索的SQL操作。 - **SELECT**：查询列。",
+    )
+
+    assert not markdown.startswith("## 单表查询")
+    assert markdown.startswith("单表查询是对单个表进行数据检索的SQL操作。")
+    assert "\n- **SELECT**：查询列。" in markdown
+
+
+def test_generate_notes_preserves_markdown_newlines(tmp_storage, monkeypatch):
+    import app.services.notes as notes_module
+
+    source = _make_source(SourceKind.pdf, "lecture.pdf")
+    session = CourseSession(course_title="DB", lecture_title="SQL", source_files=[source])
+    save_session(session)
+    save_ingest_artifact(
+        IngestArtifact(
+            session_id=session.session_id,
+            source_id=source.source_id,
+            source_kind=SourceKind.pdf,
+            chunks=[
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-p1-1",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="SQL SELECT queries tables. SQL WHERE filters rows.",
+                ),
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-p1-2",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="SQL GROUP BY groups rows and HAVING filters groups.",
+                ),
+            ],
+        )
+    )
+    graph = build_graph(session.session_id)
+
+    monkeypatch.setattr(
+        notes_module,
+        "_generate_note_with_llm",
+        lambda graph, lecture_title, topic="": notes_module.LLMNoteDocument.model_validate(
+            {
+                "title": "SQL",
+                "summary": "SQL笔记。",
+                "sections": [
+                    {
+                        "title": "单表查询",
+                        "content_md": "## 单表查询\\n\\n- **SELECT**：查询列。\\n- **WHERE**：筛选行。",
+                        "concept_ids": [graph.concepts[0].concept_id],
+                    }
+                ],
+            }
+        ),
+    )
+
+    note = generate_notes(GenerateNotesRequest(session_id=session.session_id))
+
+    assert note.sections[0].content_md.startswith("- **SELECT**")
+    assert "\n- **WHERE**：筛选行。" in note.sections[0].content_md
+    assert not note.sections[0].content_md.startswith("## 单表查询")
+    assert "\\n" not in note.sections[0].content_md
 
 
 def test_generate_notes_requires_graph_llm_when_not_mocked(tmp_storage, monkeypatch):
