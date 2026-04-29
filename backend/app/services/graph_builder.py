@@ -11,7 +11,6 @@ from app.core.types import (
     ConceptNode,
     EdgeType,
     EvidenceChunk,
-    EvidenceRef,
     GraphArtifact,
     GraphEdge,
     RelationType,
@@ -42,7 +41,7 @@ def build_graph(session_id: uuid.UUID) -> GraphArtifact:
 
         chunks = [chunk for artifact in artifacts for chunk in artifact.chunks]
         if not chunks:
-            raise ValueError("No evidence chunks available. Check the uploaded files and ingest output.")
+            raise ValueError("No text chunks available. Check the uploaded files and ingest output.")
         if all(_is_asr_failure_chunk(chunk) for chunk in chunks):
             raise RuntimeError(
                 "Audio transcription failed before graph extraction. "
@@ -113,7 +112,6 @@ def _build_concepts_from_llm(
     if not extracted.concepts:
         return []
 
-    chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
     concepts: list[ConceptNode] = []
 
     for candidate in extracted.concepts:
@@ -124,26 +122,11 @@ def _build_concepts_from_llm(
                 if alias.strip()
             }
         )
-        evidence_refs = _resolve_candidate_evidence_refs(
-            chunk_by_id=chunk_by_id,
-            evidence_chunk_ids=candidate.evidence_chunk_ids,
-            lookup_terms=aliases or [candidate.name],
-            term=candidate.canonical_name or candidate.name,
-        )
-        if not evidence_refs:
-            continue
-
         definition = candidate.definition.strip()
         if not definition:
-            snippets = " ".join(ref.snippet for ref in evidence_refs)
-            definition = summarize_text(snippets, max_sentences=1, max_chars=150)
-        summary = candidate.summary.strip() or summarize_text(
-            " ".join(ref.snippet for ref in evidence_refs),
-            max_sentences=2,
-            max_chars=220,
-        )
+            definition = summarize_text(candidate.summary or candidate.name, max_sentences=1, max_chars=150)
+        summary = candidate.summary.strip() or definition
 
-        source_count = len({ref.source_id for ref in evidence_refs})
         canonical_name = canonicalize_term(candidate.canonical_name or candidate.name)
         concepts.append(
             ConceptNode(
@@ -159,8 +142,8 @@ def _build_concepts_from_llm(
                 applications=candidate.applications[:4],
                 embedding=[],
                 importance_score=0.0,
-                source_count=source_count,
-                evidence_refs=evidence_refs[:6],
+                source_count=_matching_source_count(chunks, aliases or [candidate.name]),
+                evidence_refs=[],
             )
         )
 
@@ -173,7 +156,6 @@ def _build_edges_from_llm(
     extracted: GraphExtractionResult,
 ) -> list[GraphEdge]:
     concept_by_canonical = {concept.canonical_name: concept for concept in concepts}
-    chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
     relation_edges: list[GraphEdge] = []
     existing_edge_keys: set[tuple[str, str, EdgeType, str | None]] = set()
 
@@ -181,13 +163,6 @@ def _build_edges_from_llm(
         source = concept_by_canonical.get(canonicalize_term(relation.source_canonical_name))
         target = concept_by_canonical.get(canonicalize_term(relation.target_canonical_name))
         if source is None or target is None or source.concept_id == target.concept_id:
-            continue
-        valid_evidence_ids = [
-            chunk_id
-            for chunk_id in dict.fromkeys(relation.evidence_chunk_ids)
-            if chunk_id in chunk_by_id
-        ]
-        if not valid_evidence_ids:
             continue
 
         if relation.edge_type == EdgeType.relates_to.value and relation.relation_type:
@@ -202,26 +177,20 @@ def _build_edges_from_llm(
                 properties={
                     "relation_type": relation_type.value,
                     "confidence": round(max(relation.confidence, 0.55), 2),
-                    "evidence_count": len(valid_evidence_ids),
-                    "evidence_chunk_ids": valid_evidence_ids[:4],
                 },
             )
             relation_edges.append(edge)
             existing_edge_keys.add(key)
-        elif relation.edge_type == EdgeType.co_occurs_with.value and len(valid_evidence_ids) >= 2:
+        elif relation.edge_type == EdgeType.co_occurs_with.value:
             key = (source.concept_id, target.concept_id, EdgeType.co_occurs_with, None)
             if key in existing_edge_keys:
                 continue
-            cooccur_count = len(valid_evidence_ids)
             edge = GraphEdge(
                 source=source.concept_id,
                 target=target.concept_id,
                 edge_type=EdgeType.co_occurs_with,
                 properties={
-                    "cooccur_count": cooccur_count,
-                    "doc_count": min(source.source_count, target.source_count),
-                    "normalized_weight": round(min(1.0, 0.25 + cooccur_count * 0.15), 3),
-                    "evidence_chunk_ids": valid_evidence_ids[:4],
+                    "normalized_weight": round(max(relation.confidence, 0.55), 3),
                 },
             )
             relation_edges.append(edge)
@@ -230,36 +199,16 @@ def _build_edges_from_llm(
     return relation_edges
 
 
-def _resolve_candidate_evidence_refs(
-    *,
-    chunk_by_id: dict[str, EvidenceChunk],
-    evidence_chunk_ids: list[str],
-    lookup_terms: list[str],
-    term: str,
-) -> list[EvidenceRef]:
-    refs: list[EvidenceRef] = []
-    seen: set[str] = set()
-
-    for chunk_id in evidence_chunk_ids:
-        chunk = chunk_by_id.get(chunk_id)
-        if chunk is None or chunk.chunk_id in seen:
-            continue
-        seen.add(chunk.chunk_id)
-        refs.append(_chunk_to_ref(chunk, term))
-
-    if refs:
-        return refs
-
-    lowered_terms = [item.lower() for item in lookup_terms if item]
-    for chunk in chunk_by_id.values():
-        text = chunk.text.lower()
-        if not any(alias in text for alias in lowered_terms):
-            continue
-        refs.append(_chunk_to_ref(chunk, term))
-        if len(refs) >= 4:
-            break
-
-    return refs
+def _matching_source_count(chunks: list[EvidenceChunk], terms: list[str]) -> int:
+    lowered_terms = [term.lower() for term in terms if term]
+    if not lowered_terms:
+        return 0
+    source_ids = {
+        chunk.source_id
+        for chunk in chunks
+        if any(term in chunk.text.lower() for term in lowered_terms)
+    }
+    return len(source_ids)
 
 
 def _build_concepts(chunks: list[EvidenceChunk]) -> list[ConceptNode]:
@@ -313,10 +262,7 @@ def _build_concepts(chunks: list[EvidenceChunk]) -> list[ConceptNode]:
                 embedding=[],
                 importance_score=0.0,
                 source_count=len(source_map[canonical]),
-                evidence_refs=[
-                    _chunk_to_ref(chunk, canonical)
-                    for chunk in hits[:6]
-                ],
+                evidence_refs=[],
             )
         )
 
@@ -373,31 +319,9 @@ def _assign_importance_scores(concepts: list[ConceptNode], edges: list[GraphEdge
         concept.importance_score = round(degrees[concept.concept_id] / max_degree, 4)
 
 
-def _chunk_to_ref(chunk: EvidenceChunk, term: str) -> EvidenceRef:
-    if chunk.source_type.value == "pdf":
-        locator = f"p.{chunk.page_start}" if chunk.page_start is not None else "PDF"
-    else:
-        locator = f"{_format_seconds(chunk.time_start)}-{_format_seconds(chunk.time_end)}"
-    return EvidenceRef(
-        chunk_id=chunk.chunk_id,
-        source_id=chunk.source_id,
-        source_type=chunk.source_type,
-        locator=locator,
-        snippet=best_snippet(chunk.text, [term]) if chunk.page_start is not None or chunk.source_type.value != "pdf" else "",
-    )
-
-
 def _is_asr_failure_chunk(chunk: EvidenceChunk) -> bool:
     text = chunk.text.lower()
     return chunk.source_type.value == "audio" and text.startswith("asr failed for ")
-
-
-def _format_seconds(value: float | None) -> str:
-    if value is None:
-        return "00:00"
-    minutes = int(value // 60)
-    seconds = int(value % 60)
-    return f"{minutes:02d}:{seconds:02d}"
 
 
 def _build_edges(chunks: list[EvidenceChunk], concepts: list[ConceptNode]) -> list[GraphEdge]:
@@ -405,17 +329,17 @@ def _build_edges(chunks: list[EvidenceChunk], concepts: list[ConceptNode]) -> li
     concept_terms = {concept.concept_id: set(concept.aliases + [concept.name, concept.canonical_name]) for concept in concepts}
 
     cooccur_counts: Counter[tuple[str, str]] = Counter()
-    evidence_counts: Counter[tuple[str, str, RelationType]] = Counter()
+    relation_counts: Counter[tuple[str, str, RelationType]] = Counter()
     for chunk in chunks:
         mentioned = _mentioned_concepts(chunk, concept_terms)
         for left, right in itertools.combinations(sorted(mentioned), 2):
             cooccur_counts[(left, right)] += 1
 
         for relation in _extract_relations(chunk.text, mentioned, concept_by_id):
-            evidence_counts[relation] += 1
+            relation_counts[relation] += 1
 
     relation_edges: list[GraphEdge] = []
-    for (left, right, relation_type), count in evidence_counts.items():
+    for (left, right, relation_type), count in relation_counts.items():
         relation_edges.append(
             GraphEdge(
                 source=left,
@@ -424,7 +348,6 @@ def _build_edges(chunks: list[EvidenceChunk], concepts: list[ConceptNode]) -> li
                 properties={
                     "relation_type": relation_type.value,
                     "confidence": round(min(0.95, 0.55 + count * 0.1), 2),
-                    "evidence_count": count,
                 },
             )
         )
@@ -443,7 +366,6 @@ def _build_edges(chunks: list[EvidenceChunk], concepts: list[ConceptNode]) -> li
                 edge_type=EdgeType.co_occurs_with,
                 properties={
                     "cooccur_count": count,
-                    "doc_count": min(concept_by_id[left].source_count, concept_by_id[right].source_count),
                     "normalized_weight": normalized,
                 },
             )
@@ -460,7 +382,6 @@ def _build_edges(chunks: list[EvidenceChunk], concepts: list[ConceptNode]) -> li
                     properties={
                         "relation_type": RelationType.similar_to.value,
                         "confidence": round(0.45 + min(0.4, count * 0.08), 2),
-                        "evidence_count": count,
                     },
                 )
             )

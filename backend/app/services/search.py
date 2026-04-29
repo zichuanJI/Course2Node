@@ -26,7 +26,6 @@ def search_graph(session_id: uuid.UUID, query: str, limit: int = 8) -> SearchRes
     for concept in graph.concepts:
         lexical_bonus = 0.25 if any(term.lower() in concept.name.lower() for term in query_terms) else 0.0
         score = cosine_similarity(query_embedding, concept.embedding) + lexical_bonus
-        evidence_chunk_ids = [evidence.chunk_id for evidence in concept.evidence_refs[:3]]
         concept_hits.append(
             SearchConceptHit(
                 concept_id=concept.concept_id,
@@ -34,7 +33,7 @@ def search_graph(session_id: uuid.UUID, query: str, limit: int = 8) -> SearchRes
                 canonical_name=concept.canonical_name,
                 score=round(score, 3),
                 source_count=concept.source_count,
-                evidence_chunk_ids=evidence_chunk_ids,
+                evidence_chunk_ids=[],
             )
         )
     concept_hits.sort(key=lambda item: item.score, reverse=True)
@@ -51,10 +50,10 @@ def search_graph(session_id: uuid.UUID, query: str, limit: int = 8) -> SearchRes
                 source_type=chunk.source_type,
                 score=round(score, 3),
                 text=best_snippet(chunk.text, query_terms),
-                page_start=chunk.page_start,
-                page_end=chunk.page_end,
-                time_start=chunk.time_start,
-                time_end=chunk.time_end,
+                page_start=None,
+                page_end=None,
+                time_start=None,
+                time_end=None,
             )
         )
     chunk_hits.sort(key=lambda item: item.score, reverse=True)

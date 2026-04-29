@@ -4,10 +4,10 @@ Course2Node turns lecture PDFs, slides, notes, and audio into a knowledge-point 
 
 ## What Works Now
 
-- PDF ingest: PDF pages are rendered and sent to Kimi for page-aware text extraction.
+- PDF ingest: PDF files are sent to Kimi file extraction once; the MVP does not render pages or keep page numbers.
 - Audio ingest: lecture audio is transcribed with local Whisper or faster-whisper.
 - Embedding: chunks use a real embedding provider. The default is local `BAAI/bge-m3`.
-- Graph extraction: an OpenAI-compatible chat model extracts concepts, node attributes, evidence references, and relations.
+- Graph extraction: an OpenAI-compatible chat model extracts concepts, node attributes, and relations without citations or page locators.
 - Storage: sessions, uploads, chunks, graphs, and notes are stored as local JSON artifacts.
 - Frontend: Vite/React UI connects to the FastAPI backend and visualizes the generated graph.
 
@@ -152,11 +152,11 @@ Docker exposes the same ports: frontend on `5173`, backend on `8000`.
 ## Processing Flow
 
 1. Upload one or more PDFs and/or audio files.
-2. Run ingest. PDFs go through Kimi page extraction. Audio goes through Whisper transcription.
+2. Run ingest. PDFs go through Kimi file extraction. Audio goes through Whisper transcription.
 3. Each text chunk receives an embedding.
 4. `build_graph` sends chunks to the configured graph LLM.
-5. The backend cleans concepts, validates evidence references, builds relations, and writes `graph.json`.
-6. The frontend loads the graph, search index, evidence cards, and node detail panel from backend artifacts.
+5. The backend cleans concepts, builds relations, and writes `graph.json`.
+6. The frontend loads the graph, search index, concept cards, and node detail panel from backend artifacts.
 
 Runtime artifacts are written under `LOCAL_STORAGE_PATH/<session_id>/`.
 

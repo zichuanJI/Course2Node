@@ -35,7 +35,6 @@ class Settings(BaseSettings):
     kimi_api_key: str = ""
     kimi_model: str = "kimi-k2.6"
     kimi_timeout_seconds: float = 60.0
-    kimi_max_pages_per_call: int = 2
     kimi_max_output_tokens: int = 2200
 
     # Embed
@@ -54,12 +53,6 @@ class Settings(BaseSettings):
     whisper_language: str = "auto"
     faster_whisper_python_path: str = "/Users/zicheng/Documents/Playground/2026.3.13 Video-Note-Tool/.venv/bin/python"
     faster_whisper_runner_path: str = str(Path(__file__).resolve().parent / "services" / "faster_whisper_runner.py")
-    pdf_visual_fallback_min_chars: int = 80
-    pdf_visual_fallback_max_pages: int = 6
-    pdf_vision_base_url: str = ""
-    pdf_vision_api_key: str = ""
-    pdf_vision_model: str = ""
-    pdf_vision_timeout_seconds: float = 60.0
 
     # Search
     search_provider: str = "tavily"  # tavily | bing

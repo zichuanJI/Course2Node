@@ -18,8 +18,6 @@ def test_pdf_api_flow_and_reupload_invalidates_stale_graph_and_notes(client, mon
                 summary="Linear regression uses gradient descent.",
                 keywords=["linear regression", "gradient descent"],
                 embedding=[],
-                page_start=1,
-                page_end=1,
             ),
             EvidenceChunk(
                 chunk_id=f"{source_id}-p2-1",
@@ -29,8 +27,6 @@ def test_pdf_api_flow_and_reupload_invalidates_stale_graph_and_notes(client, mon
                 summary="Gradient descent updates parameters.",
                 keywords=["gradient descent", "parameters"],
                 embedding=[],
-                page_start=2,
-                page_end=2,
             ),
         ]
 

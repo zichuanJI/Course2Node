@@ -51,16 +51,12 @@ def test_build_graph_search_and_generate_notes_flow(tmp_storage):
                     source_id=str(pdf_source.source_id),
                     source_type=SourceKind.pdf,
                     text="Linear regression models a target with weighted features. Gradient descent minimizes loss.",
-                    page_start=1,
-                    page_end=1,
                 ),
                 _make_chunk(
                     chunk_id=f"{pdf_source.source_id}-p1-2",
                     source_id=str(pdf_source.source_id),
                     source_type=SourceKind.pdf,
                     text="Gradient descent updates weights for linear regression by following the negative gradient.",
-                    page_start=1,
-                    page_end=1,
                 ),
             ],
         )
@@ -98,7 +94,7 @@ def test_build_graph_search_and_generate_notes_flow(tmp_storage):
 
     assert note.sections
     assert note.summary
-    assert note.sections[0].references
+    assert note.sections[0].references == []
 
     stored_session = load_session(session.session_id)
     assert stored_session.status == SessionStatus.notes_ready
@@ -219,16 +215,12 @@ def test_build_graph_uses_llm_candidates_when_configured(tmp_storage, monkeypatc
                     source_id=str(source.source_id),
                     source_type=SourceKind.pdf,
                     text="Linear regression uses gradient descent to minimize loss.",
-                    page_start=1,
-                    page_end=1,
                 ),
                 _make_chunk(
                     chunk_id=f"{source.source_id}-p2-1",
                     source_id=str(source.source_id),
                     source_type=SourceKind.pdf,
                     text="Gradient descent updates parameters according to the negative gradient.",
-                    page_start=2,
-                    page_end=2,
                 ),
             ],
         )
@@ -247,14 +239,12 @@ def test_build_graph_uses_llm_candidates_when_configured(tmp_storage, monkeypatc
                         "canonical_name": "linear regression",
                         "aliases": ["linear model"],
                         "definition": "A method that models a target with weighted features.",
-                        "evidence_chunk_ids": [chunks[0].chunk_id],
                     },
                     {
                         "name": "Gradient Descent",
                         "canonical_name": "gradient descent",
                         "aliases": ["GD"],
                         "definition": "An optimization method that iteratively updates parameters.",
-                        "evidence_chunk_ids": [chunks[0].chunk_id, chunks[1].chunk_id],
                     },
                 ],
                 "relations": [
@@ -263,7 +253,6 @@ def test_build_graph_uses_llm_candidates_when_configured(tmp_storage, monkeypatc
                         "target_canonical_name": "linear regression",
                         "edge_type": "RELATES_TO",
                         "relation_type": "used_for",
-                        "evidence_chunk_ids": [chunks[0].chunk_id],
                         "confidence": 0.88,
                     }
                 ],
@@ -299,8 +288,6 @@ def test_build_graph_fails_instead_of_silent_rule_fallback_when_llm_is_enabled(t
                     source_id=str(source.source_id),
                     source_type=SourceKind.pdf,
                     text="Linear regression uses gradient descent to minimize loss.",
-                    page_start=1,
-                    page_end=1,
                 )
             ],
         )
@@ -365,7 +352,8 @@ def test_ingest_pdf_uses_kimi_file_extraction_and_real_embedding_hook(tmp_storag
 
     assert artifact.chunks
     assert all(chunk.embedding for chunk in artifact.chunks)
-    assert artifact.chunks[0].page_start == 1
+    assert artifact.chunks[0].page_start is None
+    assert "-d1-" in artifact.chunks[0].chunk_id
     assert "Linked lists and recursion" in artifact.chunks[0].text
 
 
@@ -379,7 +367,7 @@ def test_split_kimi_file_content_unwraps_json_content_with_page_markers():
 
     blocks = split_kimi_file_content(payload)
 
-    assert [block.page_index for block in blocks] == [1, 2]
+    assert [block.page_index for block in blocks] == [None, None]
     assert "线性回归介绍" in blocks[0].text
     assert not blocks[0].text.startswith("{")
 
@@ -397,7 +385,7 @@ def test_split_kimi_file_content_reads_structured_page_objects():
 
     blocks = split_kimi_file_content(payload)
 
-    assert [block.page_index for block in blocks] == [3, 4]
+    assert [block.page_index for block in blocks] == [None, None]
     assert "残差图" in blocks[0].text
     assert "VIF" in blocks[1].text
 
@@ -411,8 +399,6 @@ def test_select_graph_input_chunks_keeps_all_valid_chunks_by_default(tmp_storage
             source_id="demo-pdf",
             source_type=SourceKind.pdf,
             text=f"Page {index} explains linked lists, arrays, and complexity tradeoffs in detail.",
-            page_start=index,
-            page_end=index,
         )
         for index in range(1, 41)
     ]
@@ -420,8 +406,8 @@ def test_select_graph_input_chunks_keeps_all_valid_chunks_by_default(tmp_storage
     selected = _select_graph_input_chunks(chunks)
 
     assert len(selected) == len(chunks)
-    assert selected[0].page_start == 1
-    assert selected[-1].page_start is not None
+    assert selected[0].chunk_id == "chunk-1"
+    assert selected[-1].chunk_id == "chunk-40"
 
 
 def test_graph_prompt_includes_curation_rules(tmp_storage):
@@ -430,8 +416,6 @@ def test_graph_prompt_includes_curation_rules(tmp_storage):
         source_id="demo-pdf",
         source_type=SourceKind.pdf,
         text="关系模型包含关系、域、笛卡尔积、候选码、主码和外码等核心概念。",
-        page_start=1,
-        page_end=1,
     )
 
     prompt = _build_graph_prompt([chunk])
@@ -442,6 +426,7 @@ def test_graph_prompt_includes_curation_rules(tmp_storage):
     assert "definition 必须是一句教学定义" in prompt
     assert "尽量完整抽取" in prompt
     assert "key_points 最多 3 条" in prompt
+    assert "不要输出 evidence_chunk_ids" in prompt
 
 
 def test_graph_noise_filter_uses_curation_rules(tmp_storage):
@@ -466,8 +451,6 @@ def test_truncated_batch_is_split_before_compact_retry(tmp_storage, monkeypatch)
             source_id="demo-pdf",
             source_type=SourceKind.pdf,
             text=f"Concept {index} has a definition and a teaching explanation.",
-            page_start=index,
-            page_end=index,
         )
         for index in range(1, 3)
     ]
@@ -478,14 +461,13 @@ def test_truncated_batch_is_split_before_compact_retry(tmp_storage, monkeypatch)
             calls.append(prompt)
             if len(calls) == 1:
                 raise ValueError('Model did not return valid JSON: { "concepts": [')
-            chunk_id = "chunk-2" if "[chunk-2]" in prompt else "chunk-1"
+            chunk_id = "chunk-2" if "Concept 2" in prompt else "chunk-1"
             return {
                 "concepts": [
                     {
                         "name": chunk_id,
                         "canonical_name": chunk_id,
                         "definition": "A test concept.",
-                        "evidence_chunk_ids": [chunk_id],
                     }
                 ],
                 "relations": [],

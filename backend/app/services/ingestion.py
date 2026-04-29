@@ -80,7 +80,7 @@ def _ingest_pdf(source: SourceFile) -> list[EvidenceChunk]:
         for local_index, piece in enumerate(split_text(block.text), start=1):
             if not piece.strip():
                 continue
-            locator = f"p{block.page_index}" if block.page_index is not None else f"d{block_index}"
+            locator = f"d{block_index}"
             chunk_id = f"{source.source_id}-{locator}-{local_index}"
             chunks.append(
                 EvidenceChunk(
@@ -91,8 +91,6 @@ def _ingest_pdf(source: SourceFile) -> list[EvidenceChunk]:
                     summary=summarize_text(piece),
                     keywords=extract_candidate_terms(piece),
                     embedding=[],
-                    page_start=block.page_index,
-                    page_end=block.page_index,
                 )
             )
     if not chunks:

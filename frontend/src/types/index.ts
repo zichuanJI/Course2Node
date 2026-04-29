@@ -63,8 +63,8 @@ export interface ConceptNode {
   applications: string[];
   embedding: number[];
   importance_score: number;
-  source_count: number;
-  evidence_refs: EvidenceRef[];
+  source_count?: number;
+  evidence_refs?: EvidenceRef[];
 }
 
 export interface TopicClusterNode {
@@ -95,8 +95,8 @@ export interface SearchConceptHit {
   name: string;
   canonical_name: string;
   score: number;
-  source_count: number;
-  evidence_chunk_ids: string[];
+  source_count?: number;
+  evidence_chunk_ids?: string[];
 }
 
 export interface SearchChunkHit {
@@ -151,7 +151,7 @@ export interface NoteSection {
   title: string;
   content_md: string;
   concept_ids: string[];
-  references: NoteReference[];
+  references?: NoteReference[];
 }
 
 export interface NoteDocument {

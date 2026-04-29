@@ -84,8 +84,8 @@ class EvidenceChunk(BaseModel):
     summary: str
     keywords: list[str] = Field(default_factory=list)
     embedding: list[float] = Field(default_factory=list)
-    page_start: int | None = None
-    page_end: int | None = None
+    page_start: int | None = Field(default=None, exclude=True)
+    page_end: int | None = Field(default=None, exclude=True)
     time_start: float | None = None
     time_end: float | None = None
 
@@ -121,8 +121,8 @@ class ConceptNode(BaseModel):
     applications: list[str] = Field(default_factory=list)
     embedding: list[float] = Field(default_factory=list)
     importance_score: float = 0.0
-    source_count: int = 0
-    evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+    source_count: int = Field(default=0, exclude=True)
+    evidence_refs: list[EvidenceRef] = Field(default_factory=list, exclude=True)
 
 
 class TopicClusterNode(BaseModel):
@@ -153,8 +153,8 @@ class SearchConceptHit(BaseModel):
     name: str
     canonical_name: str
     score: float
-    source_count: int
-    evidence_chunk_ids: list[str] = Field(default_factory=list)
+    source_count: int = Field(exclude=True)
+    evidence_chunk_ids: list[str] = Field(default_factory=list, exclude=True)
 
 
 class SearchChunkHit(BaseModel):
@@ -163,10 +163,10 @@ class SearchChunkHit(BaseModel):
     source_type: SourceKind
     score: float
     text: str
-    page_start: int | None = None
-    page_end: int | None = None
-    time_start: float | None = None
-    time_end: float | None = None
+    page_start: int | None = Field(default=None, exclude=True)
+    page_end: int | None = Field(default=None, exclude=True)
+    time_start: float | None = Field(default=None, exclude=True)
+    time_end: float | None = Field(default=None, exclude=True)
 
 
 class SearchResponse(BaseModel):
@@ -209,7 +209,7 @@ class NoteSection(BaseModel):
     title: str
     content_md: str
     concept_ids: list[str] = Field(default_factory=list)
-    references: list[NoteReference] = Field(default_factory=list)
+    references: list[NoteReference] = Field(default_factory=list, exclude=True)
 
 
 class NoteDocument(BaseModel):

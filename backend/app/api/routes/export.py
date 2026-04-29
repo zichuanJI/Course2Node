@@ -35,11 +35,6 @@ def _render_markdown(note) -> str:
     lines = [f"# {note.title}", "", note.summary, ""]
     for section in note.sections:
         lines.extend([f"## {section.title}", "", section.content_md, ""])
-        if section.references:
-            lines.append("References:")
-            for ref in section.references:
-                lines.append(f"- {ref.source_type}: {ref.locator} — {ref.snippet}")
-            lines.append("")
     return "\n".join(lines).strip() + "\n"
 
 
@@ -66,4 +61,3 @@ def _render_tex(note) -> str:
             "\\end{document}",
         ]
     )
-

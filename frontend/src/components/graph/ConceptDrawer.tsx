@@ -27,24 +27,12 @@ function SkeletonCard() {
   );
 }
 
-function evidenceSourceLabel(sourceType: string) {
-  return sourceType === "pdf" ? "PDF" : "音频";
-}
-
-function evidenceLocatorLabel(sourceType: string, locator: string) {
-  if (sourceType === "pdf" && (!locator || locator === "PDF" || locator === "p.None")) {
-    return "";
-  }
-  return locator === "p.None" ? "" : locator;
-}
-
 export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const conceptId = searchParams.get("concept");
   const [concept, setConcept] = useState<ConceptNode | null>(null);
   const [artifact, setArtifact] = useState<GraphArtifact | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showAllEvidence, setShowAllEvidence] = useState(false);
 
   useEffect(() => {
     if (!conceptId) {
@@ -53,7 +41,6 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
       return;
     }
     setLoading(true);
-    setShowAllEvidence(false);
     getGraph(sessionId)
       .then((art) => {
         setArtifact(art);
@@ -90,10 +77,6 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
       }
     }
   }
-
-  const evidenceToShow = showAllEvidence
-    ? (concept?.evidence_refs ?? [])
-    : (concept?.evidence_refs ?? []).slice(0, 3);
 
   return (
     <div className="concept-drawer">
@@ -141,18 +124,18 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
             {/* Stats card */}
             <div className="cd-card cd-stats-card">
               <div className="cd-stat">
-                <div className="cd-stat-num">{concept.source_count}</div>
-                <div className="cd-stat-label">来源</div>
-              </div>
-              <div className="cd-stat-div" />
-              <div className="cd-stat">
-                <div className="cd-stat-num">{concept.evidence_refs.length}</div>
-                <div className="cd-stat-label">证据</div>
-              </div>
-              <div className="cd-stat-div" />
-              <div className="cd-stat">
                 <div className="cd-stat-num">{outNeighbors.length + inNeighbors.length}</div>
                 <div className="cd-stat-label">关系</div>
+              </div>
+              <div className="cd-stat-div" />
+              <div className="cd-stat">
+                <div className="cd-stat-num">{concept.key_points.length}</div>
+                <div className="cd-stat-label">要点</div>
+              </div>
+              <div className="cd-stat-div" />
+              <div className="cd-stat">
+                <div className="cd-stat-num">{concept.tags.length}</div>
+                <div className="cd-stat-label">标签</div>
               </div>
             </div>
 
@@ -232,43 +215,6 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
                       ))}
                     </ul>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* Evidence */}
-            {concept.evidence_refs.length > 0 && (
-              <div className="cd-card">
-                <div className="cd-card-label">
-                  <span className="cd-label-bar" />
-                  证据来源
-                  <span className="cd-label-count">{concept.evidence_refs.length}</span>
-                </div>
-                <div className="cd-evidence">
-                  {evidenceToShow.map((ref) => (
-                    <div key={ref.chunk_id} className="cd-evidence-item">
-                      <div className="cd-evidence-head">
-                        <span>{evidenceSourceLabel(ref.source_type)}</span>
-                        {evidenceLocatorLabel(ref.source_type, ref.locator) && (
-                          <span className="cd-evi-loc">{evidenceLocatorLabel(ref.source_type, ref.locator)}</span>
-                        )}
-                      </div>
-                      {ref.snippet && <div className="cd-evidence-snip">{ref.snippet}</div>}
-                    </div>
-                  ))}
-                </div>
-                {concept.evidence_refs.length > 3 && !showAllEvidence && (
-                  <button
-                    className="cd-expand-btn"
-                    onClick={() => setShowAllEvidence(true)}
-                    type="button"
-                    style={{ marginTop: 8 }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                    查看全部 {concept.evidence_refs.length} 条证据
-                  </button>
                 )}
               </div>
             )}

@@ -34,7 +34,8 @@ GRAPH_SYSTEM_PROMPT = """\
 - RELATES_TO 只能用于明确、可解释的语义关系
 - relation_type 只能是 is_a / part_of / prerequisite_of / causes / used_for / similar_to
 - CO_OCCURS_WITH 仅表示高频共现，不表示明确语义
-- 不要为了连通性补边；没有明确证据就不要输出关系
+- 不要为了连通性补边；没有明确语义依据就不要输出关系
+- 不输出引用、页码、来源说明、chunk_id 或 evidence 字段
 
 节点要求：
 - 每个概念都要像一个可展开的小型学习卡片，而不只是一个词条。
@@ -44,7 +45,6 @@ GRAPH_SYSTEM_PROMPT = """\
 - tags: 给 2-5 个短标签，如“线性结构”“复杂度”“实现”。
 - prerequisites: 仅保留本讲中真正先于它、理解它所需的前置概念名。
 - applications: 仅保留本讲中提到的用途、适用场景或典型操作。
-- evidence_chunk_ids: 每个概念至少 1 个，且必须来自输入 chunk_id。
 
 同义归一化：
 - 中英文写法、缩写、全称必须合并到一个概念。
@@ -59,16 +59,9 @@ GRAPH_SYSTEM_PROMPT = """\
 - 图里是否主要都是可教学概念？
 - 节点定义是否简洁准确？
 - 关系类型是否可解释？
-- 每个节点和边是否能回到证据 chunk？
 - 是否出现明显噪声团或毛线球倾向？如果有，删掉低价值节点和边。
 
-输出必须是 JSON object，且只能引用输入里出现过的 chunk_id。
-"""
-
-VISION_SYSTEM_PROMPT = """\
-你是课堂 PDF 页面文本恢复器。请从页面图片中提取可读文字，尽量保留标题、项目符号、公式附近的自然语言说明和顺序。
-不要解释图片，不要总结，不要输出 JSON，只返回提取出的纯文本。
-如果页面几乎不可读或没有文字，返回空字符串。
+输出必须是 JSON object。不要输出引用、页码、来源、chunk_id、evidence_chunk_ids。
 """
 
 NOISE_PATTERNS = [
@@ -140,10 +133,6 @@ def llm_graph_configured() -> bool:
     return bool(settings.graph_llm_api_key and settings.graph_llm_model)
 
 
-def pdf_visual_fallback_configured() -> bool:
-    return bool(settings.pdf_vision_api_key and settings.pdf_vision_model)
-
-
 def extract_graph_candidates(chunks: list[EvidenceChunk]) -> GraphExtractionResult:
     provider = _graph_provider()
     batches = _chunk_batches(_select_graph_input_chunks(chunks))
@@ -182,38 +171,12 @@ def _extract_batch_candidates(
         return [GraphExtractionResult.model_validate(payload)]
 
 
-def extract_text_from_page_image(image_bytes: bytes, *, filename: str, page_index: int) -> str:
-    provider = _vision_provider()
-    prompt = (
-        f"这是课堂资料 {filename} 的第 {page_index} 页。"
-        "请提取页面中的正文、标题和要点。"
-        "忽略纯装饰图形，返回纯文本。"
-    )
-    return normalize_text(
-        provider.extract_text_from_image(
-            image_bytes=image_bytes,
-            prompt=prompt,
-            system=VISION_SYSTEM_PROMPT,
-        )
-    )
-
-
 def _graph_provider() -> OpenAICompatibleLLMProvider:
     return OpenAICompatibleLLMProvider(
         api_key=settings.graph_llm_api_key,
         base_url=settings.graph_llm_base_url,
         model=settings.graph_llm_model,
         timeout_seconds=settings.graph_llm_timeout_seconds,
-        max_output_tokens=settings.graph_llm_max_output_tokens,
-    )
-
-
-def _vision_provider() -> OpenAICompatibleLLMProvider:
-    return OpenAICompatibleLLMProvider(
-        api_key=settings.pdf_vision_api_key,
-        base_url=settings.pdf_vision_base_url,
-        model=settings.pdf_vision_model,
-        timeout_seconds=settings.pdf_vision_timeout_seconds,
         max_output_tokens=settings.graph_llm_max_output_tokens,
     )
 
@@ -279,19 +242,19 @@ def _select_graph_input_chunks(chunks: list[EvidenceChunk]) -> list[EvidenceChun
 
 def _build_graph_prompt(batch: list[EvidenceChunk]) -> str:
     lines = [
-        "从下面这些 chunk 中抽取课程知识点和关系。",
-        "先按以下清洗流程在内部筛选：候选概念 -> 噪声剔除 -> 同义归一化 -> 定义生成 -> 稀疏关系抽取 -> 证据回填。",
+        "从下面这些文本片段中抽取课程知识点和关系。",
+        "先按以下清洗流程在内部筛选：候选概念 -> 噪声剔除 -> 同义归一化 -> 定义生成 -> 稀疏关系抽取。",
         "输出 JSON object，格式如下：",
         '{',
         '  "concepts": [',
-        '    {"name": "...", "canonical_name": "...", "aliases": ["..."], "definition": "...", "summary": "...", "key_points": ["..."], "tags": ["..."], "prerequisites": ["..."], "applications": ["..."], "evidence_chunk_ids": ["chunk-1"]}',
+        '    {"name": "...", "canonical_name": "...", "aliases": ["..."], "definition": "...", "summary": "...", "key_points": ["..."], "tags": ["..."], "prerequisites": ["..."], "applications": ["..."]}',
         "  ],",
         '  "relations": [',
-        '    {"source_canonical_name": "...", "target_canonical_name": "...", "edge_type": "RELATES_TO", "relation_type": "is_a", "evidence_chunk_ids": ["chunk-1"], "confidence": 0.8}',
+        '    {"source_canonical_name": "...", "target_canonical_name": "...", "edge_type": "RELATES_TO", "relation_type": "is_a", "confidence": 0.8}',
         "  ]",
         "}",
         "要求：",
-        "- 只使用输入里存在的 chunk_id 作为 evidence_chunk_ids",
+        "- 不要输出 evidence_chunk_ids、chunk_id、页码、引用或来源说明",
         "- 同义词、中英文别名请合并到同一个概念",
         "- 优先抽标题、定义句、枚举项、运算名、约束名、模型名中的核心概念",
         "- 默认丢弃人名、学号、课程号、专业号、姓名、性别、年龄、表格示例值、页码和章节编号",
@@ -303,14 +266,13 @@ def _build_graph_prompt(batch: list[EvidenceChunk]) -> str:
         "- 对当前 batch 中出现的可教学知识点尽量完整抽取，不要因为全局数量限制丢掉有效知识点",
         "- 若当前 batch 知识点很多，优先保留有定义、操作、公式、约束、模型或方法说明的概念",
         "- 为避免输出过长，每个字符串字段尽量控制在 90 个中文字符以内",
-        "- key_points 最多 3 条，tags 最多 4 个，prerequisites/applications 没有明确证据时返回空数组",
+        "- key_points 最多 3 条，tags 最多 4 个，prerequisites/applications 没有明确文本依据时返回空数组",
         "- 关系数据库类章节的保留范式示例：关系模型、关系、域、笛卡尔积、元组、属性、候选码、主码、外码、关系模式、关系操作、选择、投影、连接、关系完整性、SQL",
         "",
-        "输入 chunks:",
+        "输入文本片段:",
     ]
-    for chunk in batch:
-        locator = _chunk_locator(chunk)
-        lines.append(f"[{chunk.chunk_id}] ({chunk.source_type.value} {locator}) {_chunk_prompt_text(chunk)}")
+    for index, chunk in enumerate(batch, start=1):
+        lines.append(f"片段 {index}: {_chunk_prompt_text(chunk)}")
     return "\n".join(lines)
 
 
@@ -319,21 +281,20 @@ def _build_compact_graph_prompt(batch: list[EvidenceChunk]) -> str:
         "上一次 JSON 输出过长或被截断。请重新抽取更小、更紧凑的课程知识图谱。",
         "只输出 JSON object，不要 markdown，不要解释。",
         "格式：",
-        '{"concepts":[{"name":"","canonical_name":"","aliases":[],"definition":"","summary":"","key_points":[],"tags":[],"prerequisites":[],"applications":[],"evidence_chunk_ids":[]}],"relations":[{"source_canonical_name":"","target_canonical_name":"","edge_type":"RELATES_TO","relation_type":"used_for","evidence_chunk_ids":[],"confidence":0.8}]}',
+        '{"concepts":[{"name":"","canonical_name":"","aliases":[],"definition":"","summary":"","key_points":[],"tags":[],"prerequisites":[],"applications":[]}],"relations":[{"source_canonical_name":"","target_canonical_name":"","edge_type":"RELATES_TO","relation_type":"used_for","confidence":0.8}]}',
         "硬性限制：",
         "- concepts 最多 6 个，只选章节主线概念",
         "- relations 最多 8 条，只保留最明确的语义关系",
         "- definition/summary 每项不超过 45 个中文字符",
         "- key_points 最多 2 条，每条不超过 30 个中文字符",
         "- tags 最多 3 个",
-        "- prerequisites/applications 没有明确证据时返回空数组",
-        "- evidence_chunk_ids 只能使用输入中的 chunk_id",
+        "- prerequisites/applications 没有明确文本依据时返回空数组",
+        "- 不要输出 evidence_chunk_ids、chunk_id、页码、引用或来源说明",
         "",
-        "输入 chunks:",
+        "输入文本片段:",
     ]
-    for chunk in batch:
-        locator = _chunk_locator(chunk)
-        lines.append(f"[{chunk.chunk_id}] ({chunk.source_type.value} {locator}) {_chunk_prompt_text(chunk)[:260]}")
+    for index, chunk in enumerate(batch, start=1):
+        lines.append(f"片段 {index}: {_chunk_prompt_text(chunk)[:260]}")
     return "\n".join(lines)
 
 
@@ -351,9 +312,7 @@ def _merge_results(results: list[GraphExtractionResult]) -> GraphExtractionResul
                 concept_map[normalized.canonical_name] = normalized
                 continue
             merged_aliases = sorted({*existing.aliases, *normalized.aliases, existing.name, normalized.name})
-            merged_evidence = list(dict.fromkeys(existing.evidence_chunk_ids + normalized.evidence_chunk_ids))
             existing.aliases = merged_aliases[:10]
-            existing.evidence_chunk_ids = merged_evidence[:8]
             if len(normalized.definition) > len(existing.definition):
                 existing.definition = normalized.definition
             if len(normalized.name) > len(existing.name):
@@ -373,13 +332,10 @@ def _merge_results(results: list[GraphExtractionResult]) -> GraphExtractionResul
             if existing is None:
                 relation_map[key] = normalized
                 continue
-            existing.evidence_chunk_ids = list(
-                dict.fromkeys(existing.evidence_chunk_ids + normalized.evidence_chunk_ids)
-            )[:8]
             existing.confidence = round(max(existing.confidence, normalized.confidence), 3)
 
     return GraphExtractionResult(
-        concepts=sorted(concept_map.values(), key=lambda item: (len(item.evidence_chunk_ids), item.name), reverse=True),
+        concepts=sorted(concept_map.values(), key=lambda item: item.name),
         relations=list(relation_map.values()),
     )
 
@@ -413,8 +369,6 @@ def _normalize_concept(concept: ExtractedConcept) -> ExtractedConcept | None:
 
     definition = normalize_text(concept.definition)
     summary = normalize_text(concept.summary)
-    evidence_chunk_ids = list(dict.fromkeys(chunk_id.strip() for chunk_id in concept.evidence_chunk_ids if chunk_id.strip()))
-
     return ExtractedConcept(
         name=name or deduped_aliases[0],
         canonical_name=canonical_name,
@@ -425,7 +379,7 @@ def _normalize_concept(concept: ExtractedConcept) -> ExtractedConcept | None:
         tags=_clean_short_lines(concept.tags, max_items=5),
         prerequisites=_clean_short_lines(concept.prerequisites, max_items=4),
         applications=_clean_short_lines(concept.applications, max_items=4),
-        evidence_chunk_ids=evidence_chunk_ids[:8],
+        evidence_chunk_ids=[],
     )
 
 
@@ -450,7 +404,7 @@ def _normalize_relation(relation: ExtractedRelation) -> ExtractedRelation | None
         target_canonical_name=target,
         edge_type=edge_type,
         relation_type=relation_type,
-        evidence_chunk_ids=list(dict.fromkeys(chunk_id.strip() for chunk_id in relation.evidence_chunk_ids if chunk_id.strip()))[:8],
+        evidence_chunk_ids=[],
         confidence=max(0.0, min(float(relation.confidence), 1.0)),
     )
 
@@ -474,19 +428,11 @@ def _looks_like_noise(value: str) -> bool:
     return False
 
 
-def _chunk_locator(chunk: EvidenceChunk) -> str:
-    if chunk.page_start is not None:
-        return f"p.{chunk.page_start}"
-    if chunk.time_start is not None:
-        return f"{int(chunk.time_start // 60):02d}:{int(chunk.time_start % 60):02d}"
-    return "unknown"
-
-
 def _chunk_prompt_text(chunk: EvidenceChunk) -> str:
     summary = normalize_text(chunk.summary)
     text = normalize_text(chunk.text)
     if summary and summary != text:
-        candidate = f"{summary} Evidence: {text[:220]}"
+        candidate = f"{summary} 内容: {text[:220]}"
     else:
         candidate = text[:320]
     return candidate[:360]
