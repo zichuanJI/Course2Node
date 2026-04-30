@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
-import { deleteSession, listSessions } from "../api/client";
-import type { CourseSession, SessionStatus } from "../types";
+import { deleteSession, getRuntimeSettings, listSessions, updateRuntimeSettings } from "../api/client";
+import type { CourseSession, RuntimeSettingField, RuntimeSettingsResponse, SessionStatus } from "../types";
 import { useToast } from "../components/primitives/Toast";
 import "./HomePage.css";
 
@@ -107,6 +107,155 @@ function ConfirmModal({
   );
 }
 
+function DeploymentSettingsModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const [settingsPayload, setSettingsPayload] = useState<RuntimeSettingsResponse | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  useEffect(() => {
+    getRuntimeSettings()
+      .then((payload) => {
+        setSettingsPayload(payload);
+        setDraft(Object.fromEntries(payload.fields.map((field) => [field.key, field.value])));
+      })
+      .catch(() => toast("加载部署设置失败", "error"))
+      .finally(() => setLoading(false));
+  }, [toast]);
+
+  async function handleSave() {
+    if (!settingsPayload) return;
+    setSaving(true);
+    try {
+      const values = Object.fromEntries(
+        settingsPayload.fields.map((field) => [field.key, draft[field.key] ?? ""]),
+      );
+      const updated = await updateRuntimeSettings(values);
+      setSettingsPayload(updated);
+      setDraft(Object.fromEntries(updated.fields.map((field) => [field.key, field.value])));
+      toast("部署设置已保存到后端 .env", "success");
+    } catch (error) {
+      toast(error instanceof Error ? `保存失败：${error.message}` : "保存失败", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function copyCommand(command: string) {
+    try {
+      await navigator.clipboard.writeText(command);
+      toast("命令已复制", "success");
+    } catch {
+      toast("复制失败", "error");
+    }
+  }
+
+  const groups = useMemo(() => groupSettings(settingsPayload?.fields ?? []), [settingsPayload]);
+  const whisperModel = draft.WHISPER_MODEL_SIZE || "base";
+  const whisperCommand = `python -c "import whisper; whisper.load_model('${whisperModel}')"`;
+  const fasterWhisperCommand = `python -c "from faster_whisper import WhisperModel; WhisperModel('${whisperModel}')"`;
+
+  return (
+    <div className="settings-overlay" onClick={() => !saving && onClose()}>
+      <div className="settings-dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="settings-head">
+          <div>
+            <p className="settings-kicker">DEPLOYMENT</p>
+            <h2>部署设置</h2>
+            <p>写入后端本地 .env，用于迁移部署时快速配置 API Key 与模型参数。</p>
+          </div>
+          <button className="settings-close" type="button" onClick={onClose} disabled={saving} aria-label="关闭设置">
+            ×
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="settings-loading">加载设置中…</div>
+        ) : (
+          <>
+            {settingsPayload?.warnings.map((warning) => (
+              <div className="settings-warning" key={warning}>{warning}</div>
+            ))}
+
+            <div className="settings-grid">
+              {groups.map(([group, fields]) => (
+                <section className="settings-card" key={group}>
+                  <h3>{group}</h3>
+                  <div className="settings-fields">
+                    {fields.map((field) => (
+                      <label className="settings-field" key={field.key}>
+                        <span>
+                          {field.label}
+                          {field.secret && field.configured && <em>已配置</em>}
+                          {field.help_url && (
+                            <a href={field.help_url} target="_blank" rel="noreferrer">
+                              获取/文档
+                            </a>
+                          )}
+                        </span>
+                        <input
+                          type={field.secret ? "password" : "text"}
+                          value={draft[field.key] ?? ""}
+                          placeholder={field.secret && field.configured ? "留空则不修改当前密钥" : field.placeholder}
+                          onChange={(event) => setDraft((current) => ({ ...current, [field.key]: event.target.value }))}
+                          autoComplete="off"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            <section className="settings-card settings-download-card">
+              <h3>Whisper / faster-whisper 模型入口</h3>
+              <p>
+                本项目不会从网页端触发模型下载。首次音频解析前，可以打开模型页或在后端环境运行预热命令。
+              </p>
+              <div className="settings-link-row">
+                <a href="https://huggingface.co/openai/whisper-base" target="_blank" rel="noreferrer">OpenAI Whisper 模型</a>
+                <a href="https://huggingface.co/collections/Systran/faster-whisper" target="_blank" rel="noreferrer">Systran faster-whisper 模型</a>
+              </div>
+              <div className="settings-command-list">
+                <button type="button" onClick={() => copyCommand(whisperCommand)}>
+                  <code>{whisperCommand}</code>
+                </button>
+                <button type="button" onClick={() => copyCommand(fasterWhisperCommand)}>
+                  <code>{fasterWhisperCommand}</code>
+                </button>
+              </div>
+            </section>
+
+            <div className="settings-actions">
+              <button className="btn btn-outline btn-sm" type="button" onClick={onClose} disabled={saving}>
+                取消
+              </button>
+              <button className="btn btn-accent btn-sm" type="button" onClick={handleSave} disabled={saving}>
+                {saving ? "保存中…" : "保存设置"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function groupSettings(fields: RuntimeSettingField[]) {
+  const map = new Map<string, RuntimeSettingField[]>();
+  for (const field of fields) {
+    const group = map.get(field.group) ?? [];
+    group.push(field);
+    map.set(field.group, group);
+  }
+  return Array.from(map.entries());
+}
+
 // ── HomePage ──────────────────────────────────────────────────────────────────
 export function HomePage() {
   const [sessions, setSessions] = useState<CourseSession[]>([]);
@@ -116,6 +265,7 @@ export function HomePage() {
   const [courseFilter, setCourseFilter] = useState<string>("all");
   const [pending, setPending] = useState<{ label: string; onConfirm: () => Promise<void> } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -209,16 +359,25 @@ export function HomePage() {
             {sessions.length} 节课 · 累计 <b>{totalConcepts.toLocaleString()}</b> 个知识点，<b>{totalRelations.toLocaleString()}</b> 条关系
           </p>
         </div>
-        <button
-          className="btn btn-accent"
-          onClick={() => navigate("/new")}
-          type="button"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          新建课程
-        </button>
+        <div className="home-head-actions">
+          <button
+            className="btn btn-outline"
+            onClick={() => setSettingsOpen(true)}
+            type="button"
+          >
+            部署设置
+          </button>
+          <button
+            className="btn btn-accent"
+            onClick={() => navigate("/new")}
+            type="button"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            新建课程
+          </button>
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -316,6 +475,8 @@ export function HomePage() {
           loading={deleting}
         />
       )}
+
+      {settingsOpen && <DeploymentSettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

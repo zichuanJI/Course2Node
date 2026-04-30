@@ -5,7 +5,8 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 
-from app.core.types import BuildGraphRequest, GenerateNotesRequest, IngestRequest, SearchRequest
+from app.core.types import BuildGraphRequest, GenerateExamRequest, GenerateNotesRequest, IngestRequest, SearchRequest
+from app.services.exam import generate_exam, get_exam
 from app.services.graph_builder import build_graph
 from app.services.ingestion import ingest_source
 from app.services.notes import generate_notes, get_note
@@ -105,6 +106,28 @@ async def get_note_endpoint(session_id: uuid.UUID):
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Note not found.") from exc
     return note.model_dump(mode="json")
+
+
+@router.post("/generate_exam")
+async def generate_exam_endpoint(request: GenerateExamRequest):
+    try:
+        exam = await run_in_threadpool(generate_exam, request)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Graph or session not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return exam.model_dump(mode="json")
+
+
+@router.get("/exam/{session_id}")
+async def get_exam_endpoint(session_id: uuid.UUID):
+    try:
+        exam = get_exam(session_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Exam not found.") from exc
+    return exam.model_dump(mode="json")
 
 
 @router.get("/graph/{session_id}")

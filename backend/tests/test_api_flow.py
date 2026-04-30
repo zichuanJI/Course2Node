@@ -5,6 +5,7 @@ from app.storage.local import save_session
 
 
 def test_pdf_api_flow_and_reupload_invalidates_stale_graph_and_notes(client, monkeypatch):
+    import app.services.exam as exam_module
     import app.services.ingestion as ingestion_module
     import app.services.notes as notes_module
 
@@ -93,12 +94,54 @@ def test_pdf_api_flow_and_reupload_invalidates_stale_graph_and_notes(client, mon
     note_payload = note_response.json()
     assert note_payload["sections"]
 
+    monkeypatch.setattr(
+        exam_module,
+        "_generate_exam_with_llm",
+        lambda graph, lecture_title, question_count, question_types=None: exam_module.LLMExamDocument.model_validate(
+            {
+                "title": "Linear Regression - 图谱试卷",
+                "summary": "基于当前图谱生成的课堂测验。",
+                "questions": [
+                    {
+                        "question_type": "single_choice",
+                        "stem": "梯度下降在线性回归中的作用是什么？",
+                        "choices": [
+                            {"choice_id": "A", "text": "迭代更新参数以降低损失"},
+                            {"choice_id": "B", "text": "随机删除训练样本"},
+                            {"choice_id": "C", "text": "定义数据库约束"},
+                            {"choice_id": "D", "text": "提高音频采样率"},
+                        ],
+                        "answer": "A",
+                        "explanation": "梯度下降沿负梯度方向更新参数，使线性回归损失下降。",
+                        "difficulty": "easy",
+                        "concept_ids": [graph.concepts[0].concept_id],
+                        "tested_points": ["梯度下降的优化作用"],
+                        "importance_basis": "高 importance_score 概念。",
+                    }
+                ],
+            }
+        ),
+    )
+    exam_response = client.post(
+        "/generate_exam",
+        json={"session_id": session_id, "question_count": 4, "question_types": ["single_choice", "fill_blank"]},
+    )
+    assert exam_response.status_code == 200
+    assert exam_response.json()["questions"]
+
+    exam_export_response = client.get(f"/export/{session_id}/exam/markdown")
+    assert exam_export_response.status_code == 200
+    assert "## 题目" in exam_export_response.text
+    assert "## 答案与解析" in exam_export_response.text
+    assert exam_export_response.text.find("## 题目") < exam_export_response.text.find("## 答案与解析")
+
     markdown_response = client.get(f"/export/{session_id}/markdown")
     assert markdown_response.status_code == 200
     assert "# Linear Regression - 图谱笔记" in markdown_response.text
 
     assert client.get(f"/graph/{session_id}").status_code == 200
     assert client.get(f"/notes/{session_id}").status_code == 200
+    assert client.get(f"/exam/{session_id}").status_code == 200
 
     reupload_response = client.post(
         "/upload/pdf",
@@ -115,6 +158,7 @@ def test_pdf_api_flow_and_reupload_invalidates_stale_graph_and_notes(client, mon
 
     assert client.get(f"/graph/{session_id}").status_code == 404
     assert client.get(f"/notes/{session_id}").status_code == 404
+    assert client.get(f"/exam/{session_id}").status_code == 404
 
 
 def test_missing_artifacts_and_invalid_export_return_expected_status_codes(client):

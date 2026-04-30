@@ -164,3 +164,54 @@ export interface NoteDocument {
   sections: NoteSection[];
   generated_at: string;
 }
+
+export interface ExamChoice {
+  choice_id: string;
+  text: string;
+}
+
+export type ExamQuestionType =
+  | "single_choice"
+  | "multiple_choice"
+  | "true_false"
+  | "fill_blank"
+  | "short_answer"
+  | "essay";
+
+export interface ExamQuestion {
+  question_id: string;
+  question_type: ExamQuestionType | string;
+  stem: string;
+  choices: ExamChoice[];
+  answer: string;
+  explanation: string;
+  difficulty: "easy" | "medium" | "hard" | string;
+  concept_ids: string[];
+  tested_points: string[];
+  importance_basis: string;
+}
+
+export interface ExamDocument {
+  exam_id: string;
+  session_id: string;
+  title: string;
+  summary: string;
+  questions: ExamQuestion[];
+  generated_at: string;
+}
+
+export interface RuntimeSettingField {
+  key: string;
+  label: string;
+  group: string;
+  value: string;
+  configured: boolean;
+  secret: boolean;
+  help_url: string;
+  placeholder: string;
+}
+
+export interface RuntimeSettingsResponse {
+  fields: RuntimeSettingField[];
+  warnings: string[];
+}

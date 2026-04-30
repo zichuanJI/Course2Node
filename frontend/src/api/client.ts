@@ -1,7 +1,9 @@
 import type {
   CourseSession,
+  ExamDocument,
   NoteDocument,
   GraphArtifact,
+  RuntimeSettingsResponse,
   SearchResponse,
   SubgraphResponse,
 } from "../types";
@@ -150,6 +152,20 @@ export async function getNote(sessionId: string): Promise<NoteDocument> {
   return readJson<NoteDocument>(response);
 }
 
+export async function generateExam(payload: { session_id: string; question_count?: number; question_types?: string[] }) {
+  const response = await fetch(`${BASE}/generate_exam`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return readJson<ExamDocument>(response);
+}
+
+export async function getExam(sessionId: string): Promise<ExamDocument> {
+  const response = await fetch(`${BASE}/exam/${sessionId}`);
+  return readJson<ExamDocument>(response);
+}
+
 export async function deleteSession(id: string): Promise<void> {
   const response = await fetch(`${BASE}/sessions/${id}`, { method: "DELETE" });
   await readJson<{ ok: boolean }>(response);
@@ -161,4 +177,26 @@ export async function exportNote(sessionId: string, fmt: "markdown" | "tex" | "t
     throw new ApiError(response.status, await response.text());
   }
   return response.text();
+}
+
+export async function exportExam(sessionId: string, fmt: "markdown" | "tex" | "txt"): Promise<string> {
+  const response = await fetch(`${BASE}/export/${sessionId}/exam/${fmt}`);
+  if (!response.ok) {
+    throw new ApiError(response.status, await response.text());
+  }
+  return response.text();
+}
+
+export async function getRuntimeSettings(): Promise<RuntimeSettingsResponse> {
+  const response = await fetch(`${BASE}/settings/runtime`);
+  return readJson<RuntimeSettingsResponse>(response);
+}
+
+export async function updateRuntimeSettings(values: Record<string, string>): Promise<RuntimeSettingsResponse> {
+  const response = await fetch(`${BASE}/settings/runtime`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ values }),
+  });
+  return readJson<RuntimeSettingsResponse>(response);
 }

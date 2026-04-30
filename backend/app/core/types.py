@@ -223,6 +223,33 @@ class NoteDocument(BaseModel):
     generated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ExamChoice(BaseModel):
+    choice_id: str
+    text: str
+
+
+class ExamQuestion(BaseModel):
+    question_id: str = Field(default_factory=lambda: str(uuid4()))
+    question_type: str
+    stem: str
+    choices: list[ExamChoice] = Field(default_factory=list)
+    answer: str
+    explanation: str
+    difficulty: str = "medium"
+    concept_ids: list[str] = Field(default_factory=list)
+    tested_points: list[str] = Field(default_factory=list)
+    importance_basis: str = ""
+
+
+class ExamDocument(BaseModel):
+    exam_id: str = Field(default_factory=lambda: str(uuid4()))
+    session_id: UUID
+    title: str
+    summary: str = ""
+    questions: list[ExamQuestion] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class UploadResponse(BaseModel):
     session_id: UUID
     source_id: UUID
@@ -249,3 +276,29 @@ class GenerateNotesRequest(BaseModel):
     session_id: UUID
     topic: str = ""
     concept_ids: list[str] = Field(default_factory=list)
+
+
+class GenerateExamRequest(BaseModel):
+    session_id: UUID
+    question_count: int = Field(default=10, ge=4, le=30)
+    question_types: list[str] = Field(default_factory=list)
+
+
+class RuntimeSettingField(BaseModel):
+    key: str
+    label: str
+    group: str
+    value: str = ""
+    configured: bool = False
+    secret: bool = False
+    help_url: str = ""
+    placeholder: str = ""
+
+
+class RuntimeSettingsResponse(BaseModel):
+    fields: list[RuntimeSettingField] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class RuntimeSettingsUpdate(BaseModel):
+    values: dict[str, str] = Field(default_factory=dict)

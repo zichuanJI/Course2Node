@@ -7,6 +7,7 @@ import pytest
 from app.core.types import (
     CourseSession,
     EvidenceChunk,
+    GenerateExamRequest,
     GenerateNotesRequest,
     IngestArtifact,
     SessionStatus,
@@ -25,9 +26,10 @@ from app.services.llm_graph import (
 )
 from app.services.kimi_pdf import ExtractedPdfTextBlock, split_kimi_file_content
 from app.services.notes import _build_notes_prompt, _clean_section_markdown, _normalize_note_markdown, generate_notes
+from app.services.exam import EXAM_STYLE_RULES, LLMExamDocument, _build_exam_prompt, generate_exam
 from app.services.search import search_graph
 from app.config import settings
-from app.storage.local import load_session, save_ingest_artifact, save_session
+from app.storage.local import load_exam, load_session, save_ingest_artifact, save_session
 
 
 def test_build_graph_search_and_generate_notes_flow(tmp_storage, monkeypatch):
@@ -258,6 +260,152 @@ def test_generate_notes_preserves_markdown_newlines(tmp_storage, monkeypatch):
     assert "\n- **WHERE**：筛选行。" in note.sections[0].content_md
     assert not note.sections[0].content_md.startswith("## 单表查询")
     assert "\\n" not in note.sections[0].content_md
+
+
+def test_generate_exam_requires_independent_exam_llm_config(tmp_storage, monkeypatch):
+    source = _make_source(SourceKind.pdf, "lecture.pdf")
+    session = CourseSession(course_title="DB", lecture_title="SQL", source_files=[source])
+    save_session(session)
+    save_ingest_artifact(
+        IngestArtifact(
+            session_id=session.session_id,
+            source_id=source.source_id,
+            source_kind=SourceKind.pdf,
+            chunks=[
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-p1-1",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="SQL uses SELECT to query rows, WHERE to filter rows, and GROUP BY to aggregate groups.",
+                )
+            ],
+        )
+    )
+    build_graph(session.session_id)
+
+    monkeypatch.setattr(settings, "exam_llm_api_key", "")
+    monkeypatch.setattr(settings, "exam_llm_model", "")
+
+    with pytest.raises(RuntimeError, match="Exam LLM is not configured"):
+        generate_exam(GenerateExamRequest(session_id=session.session_id))
+
+
+def test_exam_prompt_includes_rules_schema_and_graph_metrics(tmp_storage):
+    source = _make_source(SourceKind.pdf, "lecture.pdf")
+    session = CourseSession(course_title="DB", lecture_title="SQL", source_files=[source])
+    save_session(session)
+    save_ingest_artifact(
+        IngestArtifact(
+            session_id=session.session_id,
+            source_id=source.source_id,
+            source_kind=SourceKind.pdf,
+            chunks=[
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-p1-1",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="SQL SELECT retrieves rows. WHERE filters tuples. GROUP BY groups rows for aggregation.",
+                ),
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-p1-2",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="HAVING filters groups after GROUP BY. ORDER BY sorts query results.",
+                ),
+            ],
+        )
+    )
+    graph = build_graph(session.session_id)
+    prompt = _build_exam_prompt(
+        graph,
+        lecture_title="SQL",
+        question_count=8,
+        question_types=["fill_blank", "essay"],
+    )
+
+    assert EXAM_STYLE_RULES.strip() in prompt
+    assert "https://api.deepseek.com" in prompt
+    assert "deepseek-v4-pro" in prompt
+    assert "允许题型：fill_blank, essay" in prompt
+    assert "importance_score" in prompt
+    assert "betweenness_centrality" in prompt
+    assert "weighted_degree_centrality" in prompt
+    assert "question_type" in prompt
+    assert "concept_ids" in prompt
+    assert "不接入 Web Search" in prompt
+    assert "生成恰好 8 道题" in prompt
+
+
+def test_generate_exam_saves_mock_llm_result_and_filters_invalid_concepts(tmp_storage, monkeypatch):
+    import app.services.exam as exam_module
+
+    source = _make_source(SourceKind.pdf, "lecture.pdf")
+    session = CourseSession(course_title="DB", lecture_title="SQL", source_files=[source])
+    save_session(session)
+    save_ingest_artifact(
+        IngestArtifact(
+            session_id=session.session_id,
+            source_id=source.source_id,
+            source_kind=SourceKind.pdf,
+            chunks=[
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-p1-1",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="SQL SELECT retrieves columns from tables. WHERE filters rows with predicates.",
+                ),
+                _make_chunk(
+                    chunk_id=f"{source.source_id}-p1-2",
+                    source_id=str(source.source_id),
+                    source_type=SourceKind.pdf,
+                    text="GROUP BY groups rows and HAVING filters aggregate groups.",
+                ),
+            ],
+        )
+    )
+    graph = build_graph(session.session_id)
+    concept_id = graph.concepts[0].concept_id
+
+    monkeypatch.setattr(settings, "exam_llm_api_key", "demo-key")
+    monkeypatch.setattr(settings, "exam_llm_model", "deepseek-v4-pro")
+    monkeypatch.setattr(
+        exam_module,
+        "_generate_exam_with_llm",
+        lambda graph, lecture_title, question_count, question_types=None: LLMExamDocument.model_validate(
+            {
+                "title": "SQL 图谱试卷",
+                "summary": "覆盖 SQL 查询核心概念。",
+                "questions": [
+                    {
+                        "question_type": "single_choice",
+                        "stem": "WHERE 子句的主要作用是什么？",
+                        "choices": [
+                            {"choice_id": "A", "text": "筛选满足条件的行"},
+                            {"choice_id": "B", "text": "定义新表结构"},
+                            {"choice_id": "C", "text": "删除数据库"},
+                            {"choice_id": "D", "text": "授权用户访问"},
+                        ],
+                        "answer": "A",
+                        "explanation": "WHERE 在查询中用于基于谓词过滤元组。",
+                        "difficulty": "easy",
+                        "concept_ids": [concept_id, "missing-concept"],
+                        "tested_points": ["WHERE 过滤语义"],
+                        "importance_basis": "高 importance_score 概念，且连接查询流程。",
+                    }
+                ],
+            }
+        ),
+    )
+
+    exam = generate_exam(GenerateExamRequest(session_id=session.session_id, question_count=4))
+    stored = load_exam(session.session_id)
+
+    assert exam.title == "SQL 图谱试卷"
+    assert stored.exam_id == exam.exam_id
+    assert len(exam.questions) == 1
+    assert exam.questions[0].concept_ids == [concept_id]
+    assert len(exam.questions[0].choices) == 4
+    assert exam.questions[0].answer == "A"
 
 
 def test_generate_notes_requires_graph_llm_when_not_mocked(tmp_storage, monkeypatch):

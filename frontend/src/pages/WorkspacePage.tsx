@@ -1,12 +1,14 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import { getNote, getGraph, getSession } from "../api/client";
+import { generateExam, getExam, getNote, getGraph, getSession } from "../api/client";
+import { ExamView } from "../components/notes/ExamView";
 import { NoteView } from "../components/notes/NoteView";
+import { useToast } from "../components/primitives/Toast";
 import { SearchPanel } from "../components/search/SearchPanel";
 import { ConceptDrawer } from "../components/graph/ConceptDrawer";
 import { Skeleton } from "../components/primitives/Skeleton";
-import type { CourseSession, GraphArtifact, NoteDocument } from "../types";
+import type { CourseSession, ExamDocument, GraphArtifact, NoteDocument } from "../types";
 import "./WorkspacePage.css";
 
 const ConceptGraph = lazy(() =>
@@ -20,10 +22,13 @@ interface WorkspacePageProps {
 export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const conceptId = searchParams.get("concept");
 
   const [note, setNote] = useState<NoteDocument | null>(null);
+  const [exam, setExam] = useState<ExamDocument | null>(null);
+  const [examGenerating, setExamGenerating] = useState(false);
   const [graph, setGraph] = useState<GraphArtifact | null>(null);
   const [session, setSession] = useState<CourseSession | null>(null);
   const [searchCollapsed, setSearchCollapsed] = useState(false);
@@ -33,6 +38,7 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
   useEffect(() => {
     if (!id) return;
     getNote(id).then(setNote).catch(() => {});
+    getExam(id).then(setExam).catch(() => {});
     getGraph(id).then(setGraph).catch(() => {});
     getSession(id).then((s) => setSession(s as CourseSession)).catch(() => {});
   }, [id]);
@@ -42,6 +48,23 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
   const selectedConcept = conceptId
     ? graph?.concepts.find((c) => c.concept_id === conceptId) ?? null
     : null;
+
+  async function handleGenerateExam(questionTypes: string[], questionCount: number) {
+    if (!id) return;
+    setExamGenerating(true);
+    try {
+      const fresh = await generateExam({
+        session_id: id,
+        question_count: questionCount,
+        question_types: questionTypes,
+      });
+      setExam(fresh);
+    } catch (error) {
+      toast(error instanceof Error ? `出卷失败：${error.message}` : "出卷失败", "error");
+    } finally {
+      setExamGenerating(false);
+    }
+  }
 
   return (
     <div className={clsx("workspace", {
@@ -220,19 +243,12 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
               {rightTool === "notes" ? (
                 <NoteView sessionId={id} initialNote={note} onNoteChange={setNote} />
               ) : (
-                <div className="ws-exam-placeholder">
-                  <div className="ws-exam-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 11h6" />
-                      <path d="M9 15h4" />
-                      <path d="M5 3h14v18l-2-1-2 1-2-1-2 1-2-1-2 1-2-1z" />
-                    </svg>
-                  </div>
-                  <h2>出卷功能预留</h2>
-                  <p>
-                    后续会基于知识点重要度、关系密度和课程目标生成题目。当前版本先保留入口，不触发后端请求。
-                  </p>
-                </div>
+                <ExamView
+                  sessionId={id}
+                  exam={exam}
+                  generating={examGenerating}
+                  onGenerate={handleGenerateExam}
+                />
               )}
             </div>
           </>

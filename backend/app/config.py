@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     graph_llm_max_input_units: int = 0
     graph_llm_max_output_tokens: int = 6000
     graph_llm_strict: bool = True
+    exam_llm_base_url: str = "https://api.deepseek.com"
+    exam_llm_api_key: str = ""
+    exam_llm_model: str = "deepseek-v4-pro"
+    exam_llm_timeout_seconds: float = 180.0
+    exam_llm_max_output_tokens: int = 10000
     kimi_base_url: str = "https://api.moonshot.cn/v1"
     kimi_api_key: str = ""
     kimi_model: str = "kimi-k2.6"

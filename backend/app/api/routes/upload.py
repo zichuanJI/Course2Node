@@ -10,7 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.core.types import CourseSession, SessionStatus, SourceFile, SourceKind, UploadResponse
 from app.services.graph_builder import build_graph
 from app.services.ingestion import ingest_source
-from app.storage.local import delete_graph_artifact, delete_note, load_session, save_session, write_upload
+from app.storage.local import delete_exam, delete_graph_artifact, delete_note, load_session, save_session, write_upload
 
 ALLOWED_PDF = {"application/pdf"}
 ALLOWED_AUDIO = {
@@ -195,6 +195,7 @@ def _validated_content_type(
 def _mark_session_for_rebuild(session: CourseSession) -> None:
     delete_graph_artifact(session.session_id)
     delete_note(session.session_id)
+    delete_exam(session.session_id)
     session.status = SessionStatus.uploaded
     session.error_message = None
     session.updated_at = datetime.utcnow()

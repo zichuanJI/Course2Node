@@ -9,7 +9,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.config import settings
-from app.core.types import CourseSession, GraphArtifact, IngestArtifact, NoteDocument
+from app.core.types import CourseSession, ExamDocument, GraphArtifact, IngestArtifact, NoteDocument
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -134,6 +134,22 @@ def load_note(session_id: uuid.UUID) -> NoteDocument:
 
 def delete_note(session_id: uuid.UUID) -> None:
     notes_path(session_id).unlink(missing_ok=True)
+
+
+def exam_path(session_id: uuid.UUID) -> Path:
+    return session_dir(session_id) / "exam.json"
+
+
+def save_exam(exam: ExamDocument) -> Path:
+    return _write_model(exam_path(exam.session_id), exam)
+
+
+def load_exam(session_id: uuid.UUID) -> ExamDocument:
+    return _read_model(exam_path(session_id), ExamDocument)
+
+
+def delete_exam(session_id: uuid.UUID) -> None:
+    exam_path(session_id).unlink(missing_ok=True)
 
 
 def write_json(path: Path, data: dict) -> Path:

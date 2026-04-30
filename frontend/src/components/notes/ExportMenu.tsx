@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { exportNote } from "../../api/client";
+import { exportExam, exportNote } from "../../api/client";
 import { Button } from "../primitives/Button";
 import { useToast } from "../primitives/Toast";
 import "./ExportMenu.css";
 
-export function ExportMenu({ sessionId }: { sessionId: string }) {
+export function ExportMenu({
+  sessionId,
+  kind = "note",
+}: {
+  sessionId: string;
+  kind?: "note" | "exam";
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const toast = useToast();
@@ -21,13 +27,13 @@ export function ExportMenu({ sessionId }: { sessionId: string }) {
   async function handleExport(fmt: "markdown" | "tex" | "txt") {
     setOpen(false);
     try {
-      const content = await exportNote(sessionId, fmt);
+      const content = kind === "exam" ? await exportExam(sessionId, fmt) : await exportNote(sessionId, fmt);
       const ext = fmt === "markdown" ? "md" : fmt;
       const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `notes.${ext}`;
+      a.download = `${kind === "exam" ? "exam" : "notes"}.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -38,7 +44,7 @@ export function ExportMenu({ sessionId }: { sessionId: string }) {
   async function handleCopy() {
     setOpen(false);
     try {
-      const content = await exportNote(sessionId, "markdown");
+      const content = kind === "exam" ? await exportExam(sessionId, "markdown") : await exportNote(sessionId, "markdown");
       await navigator.clipboard.writeText(content);
       toast("已复制到剪贴板", "success");
     } catch {
