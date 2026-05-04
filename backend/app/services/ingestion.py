@@ -38,19 +38,31 @@ def ingest_source(session_id: uuid.UUID, source_id: uuid.UUID) -> IngestArtifact
         )
         path = save_ingest_artifact(artifact)
 
-        source.ingested = True
-        source.ingest_artifact_path = str(path)
-        session.status = SessionStatus.uploaded
-        session.error_message = None
-        session.updated_at = artifact.created_at
+        latest_session = load_session(session_id)
+        latest_source = _find_source(latest_session, source_id)
+        latest_source.ingested = True
+        latest_source.ingest_artifact_path = str(path)
+        if latest_session.status not in {
+            SessionStatus.building_graph,
+            SessionStatus.graph_ready,
+            SessionStatus.notes_ready,
+        }:
+            latest_session.status = SessionStatus.uploaded
+        latest_session.error_message = None
+        latest_session.updated_at = artifact.created_at
         artifacts = list_ingest_artifacts(session_id)
-        session.stats.document_count = sum(1 for item in session.source_files if item.kind == SourceKind.pdf)
-        session.stats.audio_count = sum(1 for item in session.source_files if item.kind == SourceKind.audio)
-        session.stats.chunk_count = sum(len(item.chunks) for item in artifacts)
-        session.stats.concept_count = 0
-        session.stats.relation_count = 0
-        session.stats.cluster_count = 0
-        save_session(session)
+        latest_session.stats.document_count = sum(1 for item in latest_session.source_files if item.kind == SourceKind.pdf)
+        latest_session.stats.audio_count = sum(1 for item in latest_session.source_files if item.kind == SourceKind.audio)
+        latest_session.stats.chunk_count = sum(len(item.chunks) for item in artifacts)
+        if latest_session.status not in {
+            SessionStatus.building_graph,
+            SessionStatus.graph_ready,
+            SessionStatus.notes_ready,
+        }:
+            latest_session.stats.concept_count = 0
+            latest_session.stats.relation_count = 0
+            latest_session.stats.cluster_count = 0
+        save_session(latest_session)
         return artifact
     except Exception as exc:
         session.status = SessionStatus.failed

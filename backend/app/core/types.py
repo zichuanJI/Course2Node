@@ -12,6 +12,7 @@ class SessionStatus(str, Enum):
     draft = "draft"
     uploaded = "uploaded"
     ingesting = "ingesting"
+    building_graph = "building_graph"
     graph_ready = "graph_ready"
     notes_ready = "notes_ready"
     failed = "failed"

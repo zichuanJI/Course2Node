@@ -2,6 +2,7 @@ export type SessionStatus =
   | "draft"
   | "uploaded"
   | "ingesting"
+  | "building_graph"
   | "graph_ready"
   | "notes_ready"
   | "failed";

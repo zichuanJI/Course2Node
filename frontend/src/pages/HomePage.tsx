@@ -45,6 +45,7 @@ const STATUS_MAP: Record<SessionStatus, { cls: string; label: string }> = {
   draft:       { cls: "chip",       label: "草稿" },
   uploaded:    { cls: "chip chip-info",  label: "已上传" },
   ingesting:   { cls: "chip chip-live",  label: "解析中" },
+  building_graph: { cls: "chip chip-live", label: "构建图谱中" },
   graph_ready: { cls: "chip chip-warn",  label: "图谱就绪" },
   notes_ready: { cls: "chip chip-ok",    label: "已就绪" },
   failed:      { cls: "chip chip-err",   label: "失败" },
@@ -66,7 +67,7 @@ type FilterGroup = "all" | "ready" | "processing" | "failed";
 function matchFilter(status: SessionStatus, filter: FilterGroup): boolean {
   if (filter === "all") return true;
   if (filter === "ready") return status === "notes_ready" || status === "graph_ready";
-  if (filter === "processing") return status === "ingesting" || status === "uploaded" || status === "draft";
+  if (filter === "processing") return status === "ingesting" || status === "building_graph" || status === "uploaded" || status === "draft";
   if (filter === "failed") return status === "failed";
   return true;
 }

@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 
 def build_graph(session_id: uuid.UUID) -> GraphArtifact:
     session = load_session(session_id)
+    session.status = SessionStatus.building_graph
+    session.error_message = None
+    session.updated_at = datetime.utcnow()
+    save_session(session)
     try:
         artifacts = list_ingest_artifacts(session_id)
         if not artifacts:
