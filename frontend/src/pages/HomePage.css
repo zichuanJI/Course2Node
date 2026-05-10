@@ -175,6 +175,50 @@
   color: var(--ink-4);
 }
 
+/* ── Course graph/notes buttons ──────────────────────────────────────────── */
+.course-graph-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+}
+
+.course-action-btn {
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: var(--ink-4) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-sm) !important;
+  transition: all var(--dur-fast);
+  cursor: pointer;
+}
+
+.course-action-btn:hover:not(:disabled) {
+  color: var(--accent) !important;
+  background: var(--accent-ghost) !important;
+  border-color: rgba(184, 93, 48, 0.18) !important;
+}
+
+.course-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.course-action-btn-ready {
+  color: var(--accent) !important;
+}
+
+.course-action-btn-ready:hover:not(:disabled) {
+  background: rgba(184, 93, 48, 0.12) !important;
+  border-color: rgba(184, 93, 48, 0.22) !important;
+}
+
 .session-row {
   display: grid;
   grid-template-columns: 56px 1fr auto auto auto 16px;

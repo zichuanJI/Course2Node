@@ -7,6 +7,7 @@ import { TweaksPanel } from "./components/layout/TweaksPanel";
 import { HomePage } from "./pages/HomePage";
 import { NewSessionPage } from "./pages/NewSessionPage";
 import { PipelinePage } from "./pages/PipelinePage";
+import { CoursePipelinePage } from "./pages/CoursePipelinePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 const WorkspacePage = lazy(() =>
@@ -49,6 +50,7 @@ function AppInner() {
           <Route path="/" element={<HomePage />} />
           <Route path="/new" element={<NewSessionPage />} />
           <Route path="/session/:id/pipeline" element={<PipelinePage />} />
+          <Route path="/course/:title/pipeline" element={<CoursePipelinePage />} />
           <Route
             path="/session/:id"
             element={

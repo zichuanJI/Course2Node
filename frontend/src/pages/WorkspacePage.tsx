@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
 import { generateExam, getExam, getNote, getGraph, getSession } from "../api/client";
@@ -8,7 +8,7 @@ import { useToast } from "../components/primitives/Toast";
 import { SearchPanel } from "../components/search/SearchPanel";
 import { ConceptDrawer } from "../components/graph/ConceptDrawer";
 import { Skeleton } from "../components/primitives/Skeleton";
-import type { CourseSession, ExamDocument, GraphArtifact, NoteDocument } from "../types";
+import type { CourseSession, ExamDocument, GraphArtifact, NoteDocument, CourseGraphMeta } from "../types";
 import "./WorkspacePage.css";
 
 const ConceptGraph = lazy(() =>
@@ -34,6 +34,8 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
   const [searchCollapsed, setSearchCollapsed] = useState(false);
   const [notesCollapsed, setNotesCollapsed] = useState(false);
   const [rightTool, setRightTool] = useState<"notes" | "exam">("notes");
+  const [drillCoreId, setDrillCoreId] = useState<string | null>(null);
+  const [drawerCollapsed, setDrawerCollapsed] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -47,6 +49,25 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
 
   const selectedConcept = conceptId
     ? graph?.concepts.find((c) => c.concept_id === conceptId) ?? null
+    : null;
+
+  // ── Hierarchical mode ─────────────────────────────────────────────────
+  const courseMeta: CourseGraphMeta | null = graph?.course_meta ?? null;
+  const isHierarchical = !!courseMeta;
+
+  const filterNodeIds = useMemo(() => {
+    if (!isHierarchical || !courseMeta) return null;
+    if (drillCoreId) {
+      // Show the core node + its children
+      const children = courseMeta.children_map[drillCoreId] ?? [];
+      return new Set([drillCoreId, ...children]);
+    }
+    // Top-level: show only core nodes
+    return new Set(courseMeta.core_concept_ids);
+  }, [isHierarchical, courseMeta, drillCoreId]);
+
+  const drillCoreName = drillCoreId
+    ? graph?.concepts.find((c) => c.concept_id === drillCoreId)?.name ?? drillCoreId
     : null;
 
   async function handleGenerateExam(questionTypes: string[], questionCount: number) {
@@ -150,8 +171,31 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
                 <circle cx="19" cy="19" r="2" />
                 <path d="m7 7 3 3m4 0 3-3m0 10-3-3m-4 0-3 3" />
               </svg>
-              <span>全景</span>
-              {selectedConcept && (
+              <span
+                className={drillCoreId || selectedConcept ? "breadcrumb-link" : undefined}
+                onClick={() => { if (drillCoreId) setDrillCoreId(null); if (selectedConcept) setSearchParams({}); }}
+                role={drillCoreId || selectedConcept ? "button" : undefined}
+                tabIndex={drillCoreId || selectedConcept ? 0 : undefined}
+              >
+                {isHierarchical ? "总图谱 · 核心节点" : "全景"}
+              </span>
+              {drillCoreId && (
+                <>
+                  <span className="divider">/</span>
+                  <span className="current">{drillCoreName}</span>
+                  <button
+                    className="btn-icon"
+                    onClick={() => setDrillCoreId(null)}
+                    type="button"
+                    aria-label="返回核心节点"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </>
+              )}
+              {!drillCoreId && selectedConcept && (
                 <>
                   <span className="divider">/</span>
                   <span className="current">{selectedConcept.name}</span>
@@ -171,9 +215,44 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
           </div>
 
           <Suspense fallback={<Skeleton style={{ width: "100%", height: "100%", borderRadius: 0 }} />}>
-            <ConceptGraph sessionId={id} graphStyle={graphStyle} />
+            <ConceptGraph
+              sessionId={id}
+              graphStyle={graphStyle}
+              filterNodeIds={conceptId ? null : filterNodeIds}
+              onDrillDown={isHierarchical && !conceptId ? (cid) => {
+                if (!drillCoreId && courseMeta?.core_concept_ids.includes(cid)) {
+                  // Drill into this core node's children
+                  const children = courseMeta.children_map[cid] ?? [];
+                  if (children.length > 0) {
+                    setDrillCoreId(cid);
+                    return;
+                  }
+                }
+                // Already drilled or no children: open concept drawer
+                setDrawerCollapsed(false);
+                setSearchParams({ concept: cid });
+              } : undefined}
+            />
           </Suspense>
-          <ConceptDrawer sessionId={id} />
+          {!drawerCollapsed && (
+            <ConceptDrawer
+              sessionId={id}
+              onClose={isHierarchical ? () => setDrawerCollapsed(true) : undefined}
+            />
+          )}
+          {/* Drawer reopen toggle – shown when drawer is collapsed but concept is selected */}
+          {drawerCollapsed && conceptId && (
+            <button
+              className="drawer-reopen-btn"
+              onClick={() => setDrawerCollapsed(false)}
+              type="button"
+              title="展开概念详情"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+          )}
 
           {/* Overlay: stats */}
           {graph && (

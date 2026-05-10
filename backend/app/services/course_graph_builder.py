@@ -1,0 +1,251 @@
+"""Course-level graph builder — merges per-lecture graphs into one aggregate graph."""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime
+
+from app.core.types import (
+    ConceptNode,
+    CourseGraphMeta,
+    CourseSession,
+    EdgeType,
+    GraphArtifact,
+    GraphEdge,
+    SessionStats,
+    SessionStatus,
+    TopicClusterNode,
+)
+from app.services.graph_builder import (
+    _apply_concept_embeddings,
+    _assign_graph_metrics,
+    _build_clusters,
+)
+from app.storage.local import (
+    COURSE_GRAPH_LECTURE_PREFIX,
+    find_course_session,
+    list_sessions_by_course,
+    load_graph_artifact,
+    save_graph_artifact,
+    save_session,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def build_course_graph(course_title: str, top_n_core: int = 15) -> GraphArtifact:
+    """Merge all per-lecture graphs for *course_title* into a single course graph."""
+
+    # ── 1. Locate or create virtual session ──────────────────────────────
+    virtual = find_course_session(course_title)
+    if virtual is None:
+        virtual = CourseSession(
+            session_id=uuid.uuid4(),
+            course_title=course_title,
+            lecture_title=f"{COURSE_GRAPH_LECTURE_PREFIX}{course_title}",
+            status=SessionStatus.merging_graph,
+        )
+    else:
+        virtual.status = SessionStatus.merging_graph
+        virtual.error_message = None
+    virtual.updated_at = datetime.utcnow()
+    save_session(virtual)
+
+    try:
+        return _do_merge(virtual, course_title, top_n_core)
+    except Exception as exc:
+        virtual.status = SessionStatus.failed
+        virtual.error_message = str(exc)
+        virtual.updated_at = datetime.utcnow()
+        save_session(virtual)
+        raise
+
+
+def _do_merge(virtual: CourseSession, course_title: str, top_n_core: int) -> GraphArtifact:
+    # ── 2. Collect sub-graphs ────────────────────────────────────────────
+    sessions = list_sessions_by_course(course_title)
+    ready = [
+        s for s in sessions
+        if s.status in {SessionStatus.graph_ready, SessionStatus.notes_ready}
+    ]
+    if not ready:
+        raise ValueError(f"课程「{course_title}」下没有已构建图谱的讲次。")
+
+    sub_graphs: list[GraphArtifact] = []
+    source_session_ids: list[str] = []
+    for s in ready:
+        try:
+            graph = load_graph_artifact(s.session_id)
+            sub_graphs.append(graph)
+            source_session_ids.append(str(s.session_id))
+        except FileNotFoundError:
+            logger.warning("Graph artifact missing for session %s, skipping.", s.session_id)
+
+    if not sub_graphs:
+        raise ValueError("所有子图谱文件缺失，无法合并。")
+
+    # ── 3. Merge concepts ────────────────────────────────────────────────
+    merged_concepts = _merge_concepts(sub_graphs)
+    if not merged_concepts:
+        raise ValueError("合并后没有有效概念。")
+
+    # ── 4. Merge edges ───────────────────────────────────────────────────
+    merged_edges = _merge_edges(sub_graphs, merged_concepts)
+
+    # ── 5. Re-compute embeddings ─────────────────────────────────────────
+    _apply_concept_embeddings(merged_concepts)
+
+    # ── 6. Re-compute graph metrics ──────────────────────────────────────
+    _assign_graph_metrics(merged_concepts, merged_edges)
+
+    # ── 7. Re-cluster ────────────────────────────────────────────────────
+    clusters = _build_clusters(merged_concepts, merged_edges)
+
+    # ── 8. Build hierarchy ───────────────────────────────────────────────
+    course_meta = _build_hierarchy(merged_concepts, clusters, top_n_core, source_session_ids)
+
+    # ── 9. Save ──────────────────────────────────────────────────────────
+    graph = GraphArtifact(
+        session_id=virtual.session_id,
+        concepts=merged_concepts,
+        topic_clusters=clusters,
+        edges=merged_edges,
+        course_meta=course_meta,
+    )
+    save_graph_artifact(graph)
+
+    virtual.status = SessionStatus.graph_ready
+    virtual.error_message = None
+    virtual.stats = SessionStats(
+        concept_count=len(merged_concepts),
+        relation_count=len(merged_edges),
+        cluster_count=len(clusters),
+        document_count=len(sub_graphs),
+    )
+    virtual.updated_at = graph.built_at
+    save_session(virtual)
+    return graph
+
+
+# ── Merge helpers ────────────────────────────────────────────────────────────
+
+
+def _merge_concepts(sub_graphs: list[GraphArtifact]) -> list[ConceptNode]:
+    """De-duplicate concepts across sub-graphs by canonical_name, merging info."""
+    concept_map: dict[str, ConceptNode] = {}
+
+    for graph in sub_graphs:
+        for concept in graph.concepts:
+            existing = concept_map.get(concept.canonical_name)
+            if existing is None:
+                # Clone the concept (reset embedding so it gets recomputed)
+                concept_map[concept.canonical_name] = concept.model_copy(
+                    update={"embedding": [], "importance_score": 0.0, "graph_metrics": {}}
+                )
+                continue
+
+            # Merge info into existing
+            if len(concept.definition) > len(existing.definition):
+                existing.definition = concept.definition
+            if len(concept.summary) > len(existing.summary):
+                existing.summary = concept.summary
+            if len(concept.name) > len(existing.name):
+                existing.name = concept.name
+
+            # Merge aliases
+            merged_aliases = sorted(set(existing.aliases) | set(concept.aliases))
+            existing.aliases = merged_aliases[:12]
+
+            # Merge key_points (deduplicate)
+            seen_kp = {kp.lower() for kp in existing.key_points}
+            for kp in concept.key_points:
+                if kp.lower() not in seen_kp:
+                    existing.key_points.append(kp)
+                    seen_kp.add(kp.lower())
+            existing.key_points = existing.key_points[:6]
+
+            # Merge tags
+            merged_tags = sorted(set(existing.tags) | set(concept.tags))
+            existing.tags = merged_tags[:6]
+
+            # Merge prerequisites and applications
+            existing.prerequisites = sorted(set(existing.prerequisites) | set(concept.prerequisites))[:6]
+            existing.applications = sorted(set(existing.applications) | set(concept.applications))[:6]
+
+            # Take max source count
+            existing.source_count = max(existing.source_count, concept.source_count)
+
+    return list(concept_map.values())
+
+
+def _merge_edges(sub_graphs: list[GraphArtifact], merged_concepts: list[ConceptNode]) -> list[GraphEdge]:
+    """De-duplicate edges by (source, target, edge_type, relation_type), taking max confidence."""
+    valid_ids = {c.concept_id for c in merged_concepts}
+    edge_map: dict[tuple[str, str, str, str | None], GraphEdge] = {}
+
+    for graph in sub_graphs:
+        for edge in graph.edges:
+            if edge.source not in valid_ids or edge.target not in valid_ids:
+                continue
+            if edge.source == edge.target:
+                continue
+
+            relation_type = edge.properties.get("relation_type") if edge.edge_type == EdgeType.relates_to else None
+            key = (edge.source, edge.target, edge.edge_type.value if isinstance(edge.edge_type, EdgeType) else edge.edge_type, relation_type)
+
+            existing = edge_map.get(key)
+            if existing is None:
+                edge_map[key] = edge.model_copy()
+            else:
+                # Take max confidence / weight
+                for prop_key in ("confidence", "normalized_weight"):
+                    old_val = float(existing.properties.get(prop_key, 0))
+                    new_val = float(edge.properties.get(prop_key, 0))
+                    if new_val > old_val:
+                        existing.properties[prop_key] = round(new_val, 3)
+
+    return list(edge_map.values())
+
+
+def _build_hierarchy(
+    concepts: list[ConceptNode],
+    clusters: list[TopicClusterNode],
+    top_n: int,
+    source_session_ids: list[str],
+) -> CourseGraphMeta:
+    """Select top-N core concepts and assign remaining concepts as children."""
+    sorted_concepts = sorted(concepts, key=lambda c: c.importance_score, reverse=True)
+    core = sorted_concepts[:top_n]
+    core_ids = {c.concept_id for c in core}
+    remaining = [c for c in concepts if c.concept_id not in core_ids]
+
+    # Build cluster membership lookup
+    cluster_for_concept: dict[str, str] = {}
+    for cluster in clusters:
+        for concept_id in cluster.concept_ids:
+            cluster_for_concept[concept_id] = cluster.cluster_id
+
+    # Assign each remaining concept to the nearest core concept via shared cluster
+    children_map: dict[str, list[str]] = {c.concept_id: [] for c in core}
+
+    for concept in remaining:
+        cluster_id = cluster_for_concept.get(concept.concept_id)
+        assigned = False
+        if cluster_id:
+            # Find a core concept in the same cluster
+            for core_concept in core:
+                if cluster_for_concept.get(core_concept.concept_id) == cluster_id:
+                    children_map[core_concept.concept_id].append(concept.concept_id)
+                    assigned = True
+                    break
+        if not assigned:
+            # Assign to the most important core concept as fallback
+            if core:
+                children_map[core[0].concept_id].append(concept.concept_id)
+
+    return CourseGraphMeta(
+        core_concept_ids=[c.concept_id for c in core],
+        children_map=children_map,
+        source_session_ids=source_session_ids,
+    )

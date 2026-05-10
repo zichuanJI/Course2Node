@@ -172,6 +172,15 @@
   color: var(--ink-2);
 }
 
+.breadcrumb-link {
+  cursor: pointer;
+  transition: color var(--dur-fast);
+}
+
+.breadcrumb-link:hover {
+  color: var(--accent);
+}
+
 .graph-stats {
   position: absolute;
   bottom: 14px;
@@ -202,6 +211,33 @@
   border: 1px solid var(--rule);
   box-shadow: var(--shadow-1);
   z-index: 3;
+}
+
+/* Drawer reopen toggle */
+.drawer-reopen-btn {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  z-index: 5;
+  width: 28px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+
+.drawer-reopen-btn:hover {
+  color: var(--accent);
+  background: var(--accent-ghost);
+  border-color: rgba(184, 93, 48, 0.18);
 }
 
 /* Notes column body */

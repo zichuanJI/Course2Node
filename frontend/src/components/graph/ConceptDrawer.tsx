@@ -14,6 +14,7 @@ const CLUSTER_COLORS = [
 
 interface ConceptDrawerProps {
   sessionId: string;
+  onClose?: () => void;
 }
 
 function SkeletonCard() {
@@ -27,7 +28,7 @@ function SkeletonCard() {
   );
 }
 
-export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
+export function ConceptDrawer({ sessionId, onClose }: ConceptDrawerProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const conceptId = searchParams.get("concept");
   const [concept, setConcept] = useState<ConceptNode | null>(null);
@@ -52,7 +53,11 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
   }, [sessionId, conceptId]);
 
   function close() {
-    setSearchParams({});
+    if (onClose) {
+      onClose();
+    } else {
+      setSearchParams({});
+    }
   }
 
   if (!conceptId) return null;
@@ -64,16 +69,18 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
   const heroColor = clusterIndex >= 0 ? CLUSTER_COLORS[clusterIndex % CLUSTER_COLORS.length] : "var(--accent)";
 
   // Find neighbors from edges
-  const outNeighbors: Array<{ id: string; name: string; type: string }> = [];
-  const inNeighbors: Array<{ id: string; name: string; type: string }> = [];
+  const outNeighbors: Array<{ id: string; name: string; type: string; relationType?: string }> = [];
+  const inNeighbors: Array<{ id: string; name: string; type: string; relationType?: string }> = [];
   if (artifact && concept) {
     for (const edge of artifact.edges) {
+      const relationType =
+        typeof edge.properties?.relation_type === "string" ? edge.properties.relation_type : undefined;
       if (edge.source === conceptId) {
         const target = artifact.concepts.find((c) => c.concept_id === edge.target);
-        if (target) outNeighbors.push({ id: target.concept_id, name: target.name, type: edge.edge_type });
+        if (target) outNeighbors.push({ id: target.concept_id, name: target.name, type: edge.edge_type, relationType });
       } else if (edge.target === conceptId) {
         const source = artifact.concepts.find((c) => c.concept_id === edge.source);
-        if (source) inNeighbors.push({ id: source.concept_id, name: source.name, type: edge.edge_type });
+        if (source) inNeighbors.push({ id: source.concept_id, name: source.name, type: edge.edge_type, relationType });
       }
     }
   }
@@ -232,12 +239,13 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
                   <div className="cd-neighbor-group">
                     <div className="cd-neighbor-group-label">指向</div>
                     {outNeighbors.slice(0, 6).map((n) => (
-                      <NeighborRow
-                        key={n.id}
-                        name={n.name}
-                        type={n.type}
-                        onClick={() => setSearchParams({ concept: n.id })}
-                      />
+                        <NeighborRow
+                          key={n.id}
+                          name={n.name}
+                          type={n.type}
+                          relationType={n.relationType}
+                          onClick={() => setSearchParams({ concept: n.id })}
+                        />
                     ))}
                   </div>
                 )}
@@ -246,12 +254,13 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
                   <div className="cd-neighbor-group">
                     <div className="cd-neighbor-group-label">被指向</div>
                     {inNeighbors.slice(0, 6).map((n) => (
-                      <NeighborRow
-                        key={n.id}
-                        name={n.name}
-                        type={n.type}
-                        onClick={() => setSearchParams({ concept: n.id })}
-                      />
+                        <NeighborRow
+                          key={n.id}
+                          name={n.name}
+                          type={n.type}
+                          relationType={n.relationType}
+                          onClick={() => setSearchParams({ concept: n.id })}
+                        />
                     ))}
                   </div>
                 )}
@@ -270,18 +279,39 @@ export function ConceptDrawer({ sessionId }: ConceptDrawerProps) {
   );
 }
 
-function NeighborRow({ name, type, onClick }: { name: string; type: string; onClick: () => void }) {
+function NeighborRow({
+  name,
+  type,
+  relationType,
+  onClick,
+}: {
+  name: string;
+  type: string;
+  relationType?: string;
+  onClick: () => void;
+}) {
   const typeLabel: Record<string, string> = {
     RELATES_TO: "相关",
     CO_OCCURS_WITH: "共现",
     CONTAINS: "包含",
     MENTIONS: "提及",
   };
+  const relationTypeLabel: Record<string, string> = {
+    is_a: "属于",
+    part_of: "部分-整体",
+    prerequisite_of: "前置关系",
+    causes: "导致",
+    used_for: "用于",
+    similar_to: "相似",
+  };
+  const label = type === "RELATES_TO"
+    ? relationTypeLabel[relationType ?? ""] ?? typeLabel[type] ?? type
+    : typeLabel[type] ?? type;
   return (
     <div className="cd-neighbor-row" onClick={onClick} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onClick()}>
       <span className="cd-neighbor-name">{name}</span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-4)" }}>
-        {typeLabel[type] ?? type}
+        {label}
       </span>
     </div>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
-import { deleteSession, getRuntimeSettings, listSessions, updateRuntimeSettings } from "../api/client";
+import { deleteSession, getCourseSession, getRuntimeSettings, listSessions, updateRuntimeSettings } from "../api/client";
 import type { CourseSession, RuntimeSettingField, RuntimeSettingsResponse, SessionStatus } from "../types";
 import { useToast } from "../components/primitives/Toast";
 import "./HomePage.css";
@@ -46,6 +46,7 @@ const STATUS_MAP: Record<SessionStatus, { cls: string; label: string }> = {
   uploaded:    { cls: "chip chip-info",  label: "已上传" },
   ingesting:   { cls: "chip chip-live",  label: "解析中" },
   building_graph: { cls: "chip chip-live", label: "构建图谱中" },
+  merging_graph:  { cls: "chip chip-live", label: "合并图谱中" },
   graph_ready: { cls: "chip chip-warn",  label: "图谱就绪" },
   notes_ready: { cls: "chip chip-ok",    label: "已就绪" },
   failed:      { cls: "chip chip-err",   label: "失败" },
@@ -67,7 +68,7 @@ type FilterGroup = "all" | "ready" | "processing" | "failed";
 function matchFilter(status: SessionStatus, filter: FilterGroup): boolean {
   if (filter === "all") return true;
   if (filter === "ready") return status === "notes_ready" || status === "graph_ready";
-  if (filter === "processing") return status === "ingesting" || status === "building_graph" || status === "uploaded" || status === "draft";
+  if (filter === "processing") return status === "ingesting" || status === "building_graph" || status === "merging_graph" || status === "uploaded" || status === "draft";
   if (filter === "failed") return status === "failed";
   return true;
 }
@@ -257,6 +258,93 @@ function groupSettings(fields: RuntimeSettingField[]) {
   return Array.from(map.entries());
 }
 
+// ── CourseGraphButtons ────────────────────────────────────────────────────────
+function CourseGraphButtons({ course, sessions }: { course: string; sessions: CourseSession[] }) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [courseSessionId, setCourseSessionId] = useState<string | null>(null);
+  const [courseSessionStatus, setCourseSessionStatus] = useState<SessionStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const hasGraphReady = sessions.some(
+    (s) => s.status === "graph_ready" || s.status === "notes_ready",
+  );
+
+  useEffect(() => {
+    if (!hasGraphReady) return;
+    getCourseSession(course)
+      .then((s) => {
+        setCourseSessionId(s.session_id);
+        setCourseSessionStatus(s.status);
+      })
+      .catch(() => {
+        setCourseSessionId(null);
+        setCourseSessionStatus(null);
+      });
+  }, [course, hasGraphReady]);
+
+  const courseGraphReady =
+    courseSessionStatus === "graph_ready" || courseSessionStatus === "notes_ready";
+
+  function handleGraphClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (loading) return;
+    if (courseGraphReady && courseSessionId) {
+      navigate(`/session/${courseSessionId}`);
+    } else {
+      navigate(`/course/${encodeURIComponent(course)}/pipeline`);
+    }
+  }
+
+  function handleNotesClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!courseGraphReady || !courseSessionId) {
+      toast("请先生成总图谱", "error");
+      return;
+    }
+    navigate(`/session/${courseSessionId}`);
+  }
+
+  return (
+    <div className="course-graph-buttons">
+      <button
+        className={clsx("btn btn-icon course-action-btn", {
+          "course-action-btn-ready": courseGraphReady,
+        })}
+        onClick={handleGraphClick}
+        disabled={!hasGraphReady || loading}
+        title={courseGraphReady ? "查看总图谱" : "生成总图谱"}
+        type="button"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <circle cx="5" cy="5" r="2" />
+          <circle cx="19" cy="5" r="2" />
+          <circle cx="5" cy="19" r="2" />
+          <circle cx="19" cy="19" r="2" />
+          <path d="m7 7 3 3m4 0 3-3m0 10-3-3m-4 0-3 3" />
+        </svg>
+      </button>
+      <button
+        className={clsx("btn btn-icon course-action-btn", {
+          "course-action-btn-ready": courseGraphReady,
+        })}
+        onClick={handleNotesClick}
+        disabled={!courseGraphReady}
+        title={courseGraphReady ? "查看总笔记" : "需先生成总图谱"}
+        type="button"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14,2 14,8 20,8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 // ── HomePage ──────────────────────────────────────────────────────────────────
 export function HomePage() {
   const [sessions, setSessions] = useState<CourseSession[]>([]);
@@ -326,6 +414,8 @@ export function HomePage() {
   const filtered = useMemo(() => {
     const lq = query.toLowerCase();
     return sessions.filter((s) => {
+      // Hide virtual course-graph sessions from the normal list
+      if (s.lecture_title.startsWith("[总图谱] ")) return false;
       if (!matchFilter(s.status, statusFilter)) return false;
       if (courseFilter !== "all" && s.course_title !== courseFilter) return false;
       if (lq && !s.lecture_title.toLowerCase().includes(lq) && !s.course_title.toLowerCase().includes(lq)) return false;
@@ -445,6 +535,7 @@ export function HomePage() {
                 </svg>
                 <span className="session-group-name">{course}</span>
                 <span className="session-group-count">{rows.length} 讲</span>
+                <CourseGraphButtons course={course} sessions={rows} />
                 <button
                   className="btn btn-icon group-delete-btn"
                   onClick={(e) => { e.stopPropagation(); handleDeleteCourse(course); }}

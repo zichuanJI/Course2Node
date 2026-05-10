@@ -22,6 +22,8 @@ import "./ConceptGraph.css";
 interface GraphProps {
   sessionId: string;
   graphStyle?: string;
+  filterNodeIds?: Set<string> | null;
+  onDrillDown?: (conceptId: string) => void;
 }
 
 const EDGE_COLORS: Record<string, string> = {
@@ -67,13 +69,23 @@ function applyLayout(nodes: Node[], edges: Edge[], graphStyle: string) {
   }
 }
 
-function artifactToFlow(artifact: GraphArtifact, graphStyle: string): { nodes: Node[]; edges: Edge[] } {
+function artifactToFlow(
+  artifact: GraphArtifact,
+  graphStyle: string,
+  filterNodeIds?: Set<string> | null
+): { nodes: Node[]; edges: Edge[] } {
   const clusterByConcept = new Map<string, number>();
   artifact.topic_clusters.forEach((cluster, index) => {
     cluster.concept_ids.forEach((conceptId) => clusterByConcept.set(conceptId, index));
   });
 
-  const nodes: Node[] = artifact.concepts.map((c) => {
+  const conceptsToShow = filterNodeIds
+    ? artifact.concepts.filter((c) => filterNodeIds.has(c.concept_id))
+    : artifact.concepts;
+
+  const shownIds = new Set(conceptsToShow.map((c) => c.concept_id));
+
+  const nodes: Node[] = conceptsToShow.map((c) => {
     const clusterIndex = clusterByConcept.get(c.concept_id) ?? -1;
     const color = CLUSTER_COLORS[(clusterIndex >= 0 ? clusterIndex : Math.abs(c.concept_id.length)) % CLUSTER_COLORS.length];
     return {
@@ -84,10 +96,8 @@ function artifactToFlow(artifact: GraphArtifact, graphStyle: string): { nodes: N
     };
   });
 
-  const conceptIds = new Set(artifact.concepts.map((concept) => concept.concept_id));
-
   const edges: Edge[] = artifact.edges
-    .filter((e) => conceptIds.has(e.source) && conceptIds.has(e.target))
+    .filter((e) => shownIds.has(e.source) && shownIds.has(e.target))
     .map((e) => ({
       id: e.edge_id,
       source: e.source,
@@ -140,7 +150,7 @@ function subgraphToFlow(sub: SubgraphResponse, graphStyle: string): { nodes: Nod
   return applyLayout(nodes, edges, graphStyle);
 }
 
-export function ConceptGraph({ sessionId, graphStyle = "force" }: GraphProps) {
+export function ConceptGraph({ sessionId, graphStyle = "force", filterNodeIds, onDrillDown }: GraphProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const conceptId = searchParams.get("concept");
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
@@ -161,7 +171,7 @@ export function ConceptGraph({ sessionId, graphStyle = "force" }: GraphProps) {
         } else {
           const artifact = await getGraph(sessionId);
           if (artifact.concepts.length === 0) { setEmpty(true); setLoading(false); return; }
-          const { nodes, edges } = artifactToFlow(artifact, graphStyle);
+          const { nodes, edges } = artifactToFlow(artifact, graphStyle, filterNodeIds);
           setRfNodes(nodes);
           setRfEdges(edges);
           setEmpty(false);
@@ -173,14 +183,18 @@ export function ConceptGraph({ sessionId, graphStyle = "force" }: GraphProps) {
       }
     }
     void load();
-  }, [sessionId, conceptId, graphStyle, setRfNodes, setRfEdges]);
+  }, [sessionId, conceptId, graphStyle, filterNodeIds, setRfNodes, setRfEdges]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       if (node.data?.nodeType !== "concept") return;
+      if (onDrillDown && filterNodeIds) {
+        onDrillDown(node.id);
+        return;
+      }
       setSearchParams({ concept: node.id });
     },
-    [setSearchParams],
+    [setSearchParams, onDrillDown, filterNodeIds],
   );
 
   if (loading) {

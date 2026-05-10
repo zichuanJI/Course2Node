@@ -13,6 +13,7 @@ class SessionStatus(str, Enum):
     uploaded = "uploaded"
     ingesting = "ingesting"
     building_graph = "building_graph"
+    merging_graph = "merging_graph"
     graph_ready = "graph_ready"
     notes_ready = "notes_ready"
     failed = "failed"
@@ -142,12 +143,20 @@ class GraphEdge(BaseModel):
     properties: dict[str, Any] = Field(default_factory=dict)
 
 
+class CourseGraphMeta(BaseModel):
+    """总图谱嵌套结构元数据，仅总图谱有值。"""
+    core_concept_ids: list[str] = Field(default_factory=list)
+    children_map: dict[str, list[str]] = Field(default_factory=dict)
+    source_session_ids: list[str] = Field(default_factory=list)
+
+
 class GraphArtifact(BaseModel):
     session_id: UUID
     concepts: list[ConceptNode] = Field(default_factory=list)
     topic_clusters: list[TopicClusterNode] = Field(default_factory=list)
     edges: list[GraphEdge] = Field(default_factory=list)
     built_at: datetime = Field(default_factory=datetime.utcnow)
+    course_meta: CourseGraphMeta | None = None
 
 
 class SearchConceptHit(BaseModel):
@@ -265,6 +274,11 @@ class IngestRequest(BaseModel):
 
 class BuildGraphRequest(BaseModel):
     session_id: UUID
+
+
+class BuildCourseGraphRequest(BaseModel):
+    course_title: str
+    top_n_core: int = Field(default=15, ge=5, le=50)
 
 
 class SearchRequest(BaseModel):

@@ -1,0 +1,167 @@
+INFO:     Will watch for changes in these directories: ['G:\\数据科学与数据分析\\CourseNote\\Course2Node\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [28152] using WatchFiles
+INFO:     Started server process [11748]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\huggingface_hub\file_download.py:138: UserWarning: `huggingface_hub` cache-system uses symlinks by default to efficiently store duplicated files but your machine does not support them in C:\Users\lenovo\.cache\huggingface\hub\models--BAAI--bge-m3. Caching files will still work but in a degraded version that might require more space on your disk. This warning can be disabled by setting the `HF_HUB_DISABLE_SYMLINKS_WARNING` environment variable. For more details, see https://huggingface.co/docs/huggingface_hub/how-to-cache#limitations.
+To support symlinks on Windows, you either need to activate Developer Mode or to run Python as an administrator. In order to activate developer mode, see this article: https://docs.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development
+  warnings.warn(message)
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 31799.06it/s]
+LLM graph extraction failed.
+Traceback (most recent call last):
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_transports\default.py", line 127, in __iter__
+    for part in self._httpcore_stream:
+                ^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpcore\_sync\connection_pool.py", line 407, in __iter__
+    raise exc from None
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpcore\_sync\connection_pool.py", line 403, in __iter__
+    for part in self._stream:
+                ^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpcore\_sync\http11.py", line 342, in __iter__
+    raise exc
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpcore\_sync\http11.py", line 334, in __iter__
+    for chunk in self._connection._receive_response_body(**kwargs):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpcore\_sync\http11.py", line 203, in _receive_response_body
+    event = self._receive_event(timeout=timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpcore\_sync\http11.py", line 217, in _receive_event
+    data = self._network_stream.read(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpcore\_backends\sync.py", line 126, in read
+    with map_exceptions(exc_map):
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lenovo\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\openai\_base_client.py", line 982, in request
+    response = self._client.send(
+               ^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_client.py", line 928, in send
+    raise exc
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_client.py", line 922, in send
+    response.read()
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_models.py", line 881, in read
+    self._content = b"".join(self.iter_bytes())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_models.py", line 897, in iter_bytes
+    for raw_bytes in self.iter_raw():
+                     ^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_models.py", line 951, in iter_raw
+    for raw_stream_bytes in self.stream:
+                            ^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_client.py", line 153, in __iter__
+    for chunk in self._stream:
+                 ^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_transports\default.py", line 126, in __iter__
+    with map_httpcore_exceptions():
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lenovo\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\app\services\graph_builder.py", line 97, in _extract_graph_structure
+    extracted = extract_graph_candidates(chunks)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\app\services\llm_graph.py", line 154, in extract_graph_candidates
+    collected.extend(_extract_batch_candidates(provider, batch))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\app\services\llm_graph.py", line 164, in _extract_batch_candidates
+    payload = provider.generate_json(
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\app\providers\llm\openai_compatible.py", line 48, in generate_json
+    return self.generate_json_from_content(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\app\providers\llm\openai_compatible.py", line 73, in generate_json_from_content
+    response = self._client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\openai\_utils\_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\openai\resources\chat\completions\completions.py", line 1147, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\openai\_base_client.py", line 1259, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\openai\_base_client.py", line 1000, in request
+    raise APITimeoutError(request=request) from err
+openai.APITimeoutError: Request timed out.
+LLM graph extraction timed out, falling back to rule-based extraction.
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 19944.94it/s]
+WARNING:  WatchFiles detected changes in 'app\services\llm_graph.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 35193.31it/s]
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11748]
+WARNING:  WatchFiles detected changes in 'app\services\llm_graph.py'. Reloading...
+INFO:     Started server process [8560]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    Traceback (most recent call last):
+  File "C:\Users\lenovo\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lenovo\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\lenovo\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\lenovo\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\starlette\routing.py", line 700, in lifespan
+    await receive()
+  File "G:\数据科学与数据分析\CourseNote\Course2Node\backend\.venv312\Lib\site-packages\uvicorn\lifespan\on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lenovo\AppData\Local\Programs\Python\Python312\Lib\asyncio\queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+INFO:     Started server process [23172]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 29357.05it/s]
+WARNING:  WatchFiles detected changes in 'app\services\notes.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [23172]
+INFO:     Started server process [34628]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app\core\types.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [34628]

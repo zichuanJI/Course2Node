@@ -66,6 +66,35 @@ def delete_session(session_id: uuid.UUID) -> None:
         shutil.rmtree(dir_path)
 
 
+COURSE_GRAPH_LECTURE_PREFIX = "[总图谱] "
+
+
+def list_sessions_by_course(course_title: str) -> list[CourseSession]:
+    """Return all sessions whose course_title matches, excluding virtual course-graph sessions."""
+    sessions: list[CourseSession] = []
+    for session_id in list_session_ids():
+        try:
+            session = load_session(session_id)
+        except (FileNotFoundError, Exception):
+            continue
+        if session.course_title == course_title and not session.lecture_title.startswith(COURSE_GRAPH_LECTURE_PREFIX):
+            sessions.append(session)
+    return sessions
+
+
+def find_course_session(course_title: str) -> CourseSession | None:
+    """Find the virtual session that stores the course-level graph, if it exists."""
+    target_lecture = f"{COURSE_GRAPH_LECTURE_PREFIX}{course_title}"
+    for session_id in list_session_ids():
+        try:
+            session = load_session(session_id)
+        except (FileNotFoundError, Exception):
+            continue
+        if session.course_title == course_title and session.lecture_title == target_lecture:
+            return session
+    return None
+
+
 def upload_dir(session_id: uuid.UUID) -> Path:
     path = session_dir(session_id) / "uploads"
     path.mkdir(parents=True, exist_ok=True)

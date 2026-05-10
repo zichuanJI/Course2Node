@@ -200,3 +200,22 @@ export async function updateRuntimeSettings(values: Record<string, string>): Pro
   });
   return readJson<RuntimeSettingsResponse>(response);
 }
+
+export async function buildCourseGraph(payload: { course_title: string; top_n_core?: number }) {
+  const response = await fetch(`${BASE}/course/build_graph`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return readJson<{ session_id: string; concept_count: number; edge_count: number; cluster_count: number }>(response);
+}
+
+export async function getCourseGraph(courseTitle: string): Promise<GraphArtifact> {
+  const response = await fetch(`${BASE}/course/graph/${encodeURIComponent(courseTitle)}`);
+  return readJson<GraphArtifact>(response);
+}
+
+export async function getCourseSession(courseTitle: string): Promise<CourseSession> {
+  const response = await fetch(`${BASE}/course/session/${encodeURIComponent(courseTitle)}`);
+  return readJson<CourseSession>(response);
+}

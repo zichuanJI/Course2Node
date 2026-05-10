@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import export, graph, sessions, settings as runtime_settings, upload
+from app.api.routes import course, export, graph, sessions, settings as runtime_settings, upload
 from app.config import settings
 
 app = FastAPI(title="Course2Node API", version="0.1.0")
@@ -17,6 +17,7 @@ app.add_middleware(
 app.include_router(sessions.router)
 app.include_router(upload.router)
 app.include_router(graph.router)
+app.include_router(course.router)
 app.include_router(export.router)
 app.include_router(runtime_settings.router)
 

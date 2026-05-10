@@ -3,6 +3,7 @@ export type SessionStatus =
   | "uploaded"
   | "ingesting"
   | "building_graph"
+  | "merging_graph"
   | "graph_ready"
   | "notes_ready"
   | "failed";
@@ -84,12 +85,19 @@ export interface GraphEdge {
   properties: Record<string, unknown>;
 }
 
+export interface CourseGraphMeta {
+  core_concept_ids: string[];
+  children_map: Record<string, string[]>;
+  source_session_ids: string[];
+}
+
 export interface GraphArtifact {
   session_id: string;
   concepts: ConceptNode[];
   topic_clusters: TopicClusterNode[];
   edges: GraphEdge[];
   built_at: string;
+  course_meta?: CourseGraphMeta | null;
 }
 
 export interface SearchConceptHit {

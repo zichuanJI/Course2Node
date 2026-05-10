@@ -19,6 +19,42 @@ GRAPH_SYSTEM_PROMPT = """\
 - MENTIONS 表示 source 概念直接提及、命名、测量、检验或讨论 target 概念；不要带 relation_type。
 - CONTAINS 表示 source 主题、模型、章节或概念包含、分组、分解出 target 概念，或 target 是 source 的组成部分；不要带 relation_type。
 - 不要为了连通性编造边；没有明确文本依据就不要输出关系。
+- 如果可以稳定判定为 is_a / part_of / prerequisite_of / causes / used_for / similar_to，就不要偷懒输出成模糊“相关”。
+
+RELATES_TO 细分关系判定细则：
+- is_a：表示“是一个/属于某类/是某概念的子类型/实例化类别”。方向固定为 source=更具体的概念，target=更一般的上位概念。
+  触发线索：是一个、是一种、属于、可归为、type of、kind of、belongs to。
+  示例：B+树 is_a 树索引；哈希连接 is_a 连接算法。
+- part_of：表示“组成部分/子结构/字段/步骤/模块/阶段 属于 某整体”。方向固定为 source=部分，target=整体。
+  触发线索：组成、包含于、是…的一部分、构成、子模块、步骤之一、part of、component of。
+  示例：属性 part_of 关系模式；词法分析 part_of 编译流程。
+- prerequisite_of：表示“理解或执行 A 之前需要先有 B”。方向固定为 source=前置概念，target=后继概念。
+  触发线索：前提、基础、先于、依赖、需要先、requires、depends on、prerequisite。
+  示例：函数依赖 prerequisite_of 范式分解；概率论 prerequisite_of 贝叶斯分类。
+- causes：表示“因果、引起、导致、产生、带来、影响结果”。方向固定为 source=原因，target=结果。
+  触发线索：导致、造成、引起、使得、产生、造成了、leads to、causes、results in。
+  示例：冲突 causes 回滚；数据倾斜 causes 查询变慢。
+- used_for：表示“方法/工具/模型/结构 被用于 某任务、目标、问题或场景”。方向固定为 source=手段，target=用途或任务。
+  触发线索：用于、用来、适用于、负责、服务于、applied to、used for。
+  示例：BFS used_for 最短路搜索；索引 used_for 加速查询。
+- similar_to：表示“语义接近、作用相似、可类比，但不是同义词、不是上下位、不是整体部分”。方向可视为对称，但输出时保持 source/target 任一顺序即可。
+  触发线索：类似、相近、可类比、同样用于、与…相似、similar to、analogous to。
+  示例：栈 similar_to 队列（若文本明确在比较两者特性）；内连接 similar_to 等值连接（若文本明确表达近似关系）。
+
+关系类型优先级：
+- 明确语义关系优先输出 RELATES_TO，不要退化成 CO_OCCURS_WITH。
+- 仅表示章节/主题/模型下包含若干概念时，用 CONTAINS，不要误标为 part_of。
+- 仅出现“讨论了/提到了/测量了/检验了”而没有更深语义时，用 MENTIONS。
+- 只有共同出现、没有明确语义方向时，才用 CO_OCCURS_WITH。
+
+禁止与歧义消解：
+- 中英文全称、缩写、别名、翻译词应合并为同一概念的 aliases，不要用 similar_to 连接同义词。
+- “A 包含 B”如果是在讲章节目录、主题覆盖、模型组件列表，优先 CONTAINS；只有明确在讲“B 是 A 的组成部分”时才用 part_of。
+- “A 依赖 B”请转换成 B prerequisite_of A，而不是 A prerequisite_of B。
+- “A 导致 B”请保持 A causes B，不要反向。
+- “A 用于 B”请保持 A used_for B，不要反向。
+- 同一对概念若已有更明确的 RELATES_TO，就不要再补一个语义重复的 CO_OCCURS_WITH。
+- 没有文本依据时不要猜测 prerequisite_of、causes、used_for 等强语义关系。
 
 你是课程知识图谱抽取器。你的任务是把课堂 slides / notes / transcript 的文本片段清洗为结构化知识点图候选。
 
@@ -46,6 +82,14 @@ GRAPH_SYSTEM_PROMPT = """\
 - CO_OCCURS_WITH 表示两个概念在同一局部上下文中反复共同出现，但文本没有说明明确语义方向；不要带 relation_type。
 - MENTIONS 表示 source 概念直接提及、命名、测量、检验或讨论 target 概念；不要带 relation_type。
 - CONTAINS 表示 source 主题、模型、章节或概念包含、分组、分解出 target 概念，或 target 是 source 的组成部分；不要带 relation_type。
+- 如果能明确归到 is_a / part_of / prerequisite_of / causes / used_for / similar_to，就必须输出该细分关系，不要只给模糊相关边。
+- relation_type 的方向必须正确：
+  - is_a：具体 -> 抽象
+  - part_of：部分 -> 整体
+  - prerequisite_of：前置 -> 后继
+  - causes：原因 -> 结果
+  - used_for：手段 -> 用途
+  - similar_to：仅用于非同义、可类比的近似关系
 - 不要为了连通性补边；没有明确文本依据就不要输出关系。
 - 不输出引用、页码、来源说明、chunk_id 或 evidence 字段。
 
@@ -272,6 +316,15 @@ def _build_graph_prompt(batch: list[EvidenceChunk]) -> str:
         "- CO_OCCURS_WITH 表示两个概念在同一局部上下文中反复共同出现，但没有明确语义方向；不要带 relation_type。",
         "- MENTIONS 表示 source 概念直接提及、命名、测量、检验或讨论 target 概念；不要带 relation_type。",
         "- CONTAINS 表示 source 主题、模型、章节或概念包含、分组、分解出 target 概念，或 target 是 source 的组成部分；不要带 relation_type。",
+        "- 不要把能细分的关系偷懒写成笼统相关；只要能判断，就优先输出 is_a / part_of / prerequisite_of / causes / used_for / similar_to。",
+        "- is_a：具体概念 -> 上位概念。线索：是一种、属于、type of、kind of。",
+        "- part_of：部分 -> 整体。线索：组成、构成、是…的一部分、component of。",
+        "- prerequisite_of：前置 -> 后继。线索：前提、基础、依赖、requires、depends on。",
+        "- causes：原因 -> 结果。线索：导致、引起、造成、causes、leads to。",
+        "- used_for：手段/方法 -> 用途/任务。线索：用于、用来、applied to、used for。",
+        "- similar_to：仅用于非同义、可类比的近似关系；中英文别名、缩写、全称应合并为同一概念，不要用 similar_to 连同义词。",
+        "- 章节覆盖、主题包含、模块分组优先用 CONTAINS；只有明确“组成部分”语义时才用 part_of。",
+        "- 只要已有明确 RELATES_TO，就不要再补一条语义重复的 CO_OCCURS_WITH。",
         "要求：",
         "- 不要输出 evidence_chunk_ids、chunk_id、页码、引用或来源说明",
         "- 同义词、中英文别名请合并到同一个概念",
@@ -301,6 +354,9 @@ def _build_compact_graph_prompt(batch: list[EvidenceChunk]) -> str:
         "edge_type 只能是 RELATES_TO / CO_OCCURS_WITH / MENTIONS / CONTAINS。",
         "RELATES_TO 必须带 relation_type；CO_OCCURS_WITH、MENTIONS、CONTAINS 必须省略 relation_type。",
         "MENTIONS 用于直接提及、命名、测量、检验或讨论；CONTAINS 用于组成、包含、分组或分解结构。",
+        "relation_type 只能是 is_a / part_of / prerequisite_of / causes / used_for / similar_to。",
+        "方向规则：is_a=具体->抽象，part_of=部分->整体，prerequisite_of=前置->后继，causes=原因->结果，used_for=手段->用途。",
+        "同义词、中英文翻译、缩写不要输出为 similar_to，而应合并为同一概念。",
         "硬性限制：",
         "- concepts 最多 6 个，只选章节主线概念",
         "- relations 最多 8 条，只保留最明确的语义关系",
