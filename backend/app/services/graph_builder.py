@@ -39,6 +39,12 @@ def build_graph(session_id: uuid.UUID) -> GraphArtifact:
     session.updated_at = datetime.utcnow()
     save_session(session)
     try:
+        pending_sources = [source for source in session.source_files if not source.ingested]
+        if pending_sources:
+            filenames = ", ".join(source.filename for source in pending_sources[:3])
+            suffix = "..." if len(pending_sources) > 3 else ""
+            raise ValueError(f"Source files have not been ingested yet: {filenames}{suffix}")
+
         artifacts = list_ingest_artifacts(session_id)
         if not artifacts:
             raise ValueError("No ingest artifacts found. Run /ingest/pdf or /ingest/audio first.")
@@ -169,7 +175,11 @@ def _build_edges_from_llm(
         if source is None or target is None or source.concept_id == target.concept_id:
             continue
 
-        if relation.edge_type == EdgeType.relates_to.value and relation.relation_type:
+        try:
+            edge_type = EdgeType(relation.edge_type)
+        except ValueError:
+            continue
+        if edge_type == EdgeType.relates_to and relation.relation_type:
             relation_type = RelationType(relation.relation_type)
             key = (source.concept_id, target.concept_id, EdgeType.relates_to, relation_type.value)
             if key in existing_edge_keys:
@@ -185,17 +195,18 @@ def _build_edges_from_llm(
             )
             relation_edges.append(edge)
             existing_edge_keys.add(key)
-        elif relation.edge_type == EdgeType.co_occurs_with.value:
-            key = (source.concept_id, target.concept_id, EdgeType.co_occurs_with, None)
+        elif edge_type != EdgeType.relates_to:
+            key = (source.concept_id, target.concept_id, edge_type, None)
             if key in existing_edge_keys:
                 continue
+            properties = {"confidence": round(max(relation.confidence, 0.55), 2)}
+            if edge_type == EdgeType.co_occurs_with:
+                properties = {"normalized_weight": round(max(relation.confidence, 0.55), 3)}
             edge = GraphEdge(
                 source=source.concept_id,
                 target=target.concept_id,
-                edge_type=EdgeType.co_occurs_with,
-                properties={
-                    "normalized_weight": round(max(relation.confidence, 0.55), 3),
-                },
+                edge_type=edge_type,
+                properties=properties,
             )
             relation_edges.append(edge)
             existing_edge_keys.add(key)
@@ -314,6 +325,10 @@ def _assign_graph_metrics(concepts: list[ConceptNode], edges: list[GraphEdge]) -
             weight = 1.0 + float(edge.properties.get("confidence", 0.0))
         elif edge.edge_type == EdgeType.co_occurs_with:
             weight = 0.5 + float(edge.properties.get("normalized_weight", 0.0))
+        elif edge.edge_type == EdgeType.contains:
+            weight = 0.9 + float(edge.properties.get("confidence", 0.0))
+        elif edge.edge_type == EdgeType.mentions:
+            weight = 0.4 + float(edge.properties.get("confidence", 0.0))
         else:
             continue
         adjacency[edge.source].add(edge.target)
@@ -544,7 +559,7 @@ def _build_clusters(
     for edge in edges:
         if edge.source not in concept_ids or edge.target not in concept_ids:
             continue
-        if edge.edge_type not in {EdgeType.relates_to, EdgeType.co_occurs_with}:
+        if edge.edge_type not in {EdgeType.relates_to, EdgeType.co_occurs_with, EdgeType.contains, EdgeType.mentions}:
             continue
         adjacency[edge.source].add(edge.target)
         adjacency[edge.target].add(edge.source)

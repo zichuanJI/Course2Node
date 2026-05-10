@@ -6,6 +6,7 @@ import pytest
 
 from app.core.types import (
     CourseSession,
+    EdgeType,
     EvidenceChunk,
     GenerateExamRequest,
     GenerateNotesRequest,
@@ -581,6 +582,18 @@ def test_build_graph_uses_llm_candidates_when_configured(tmp_storage, monkeypatc
                         "aliases": ["GD"],
                         "definition": "An optimization method that iteratively updates parameters.",
                     },
+                    {
+                        "name": "Loss Function",
+                        "canonical_name": "loss function",
+                        "aliases": ["loss"],
+                        "definition": "A function that measures prediction error.",
+                    },
+                    {
+                        "name": "Feature",
+                        "canonical_name": "feature",
+                        "aliases": ["input feature"],
+                        "definition": "An input variable used by a model.",
+                    },
                 ],
                 "relations": [
                     {
@@ -589,7 +602,25 @@ def test_build_graph_uses_llm_candidates_when_configured(tmp_storage, monkeypatc
                         "edge_type": "RELATES_TO",
                         "relation_type": "used_for",
                         "confidence": 0.88,
-                    }
+                    },
+                    {
+                        "source_canonical_name": "linear regression",
+                        "target_canonical_name": "loss function",
+                        "edge_type": "CONTAINS",
+                        "confidence": 0.8,
+                    },
+                    {
+                        "source_canonical_name": "loss function",
+                        "target_canonical_name": "feature",
+                        "edge_type": "MENTIONS",
+                        "confidence": 0.7,
+                    },
+                    {
+                        "source_canonical_name": "gradient descent",
+                        "target_canonical_name": "loss function",
+                        "edge_type": "CO_OCCURS_WITH",
+                        "confidence": 0.77,
+                    },
                 ],
             }
         ),
@@ -597,9 +628,20 @@ def test_build_graph_uses_llm_candidates_when_configured(tmp_storage, monkeypatc
 
     graph = build_graph(session.session_id)
 
-    assert {concept.canonical_name for concept in graph.concepts} == {"linear regression", "gradient descent"}
+    assert {concept.canonical_name for concept in graph.concepts} == {
+        "linear regression",
+        "gradient descent",
+        "loss function",
+        "feature",
+    }
     assert any(edge.properties.get("relation_type") == "used_for" for edge in graph.edges)
-    assert len(graph.edges) == 1
+    assert len(graph.edges) == 4
+    assert {edge.edge_type for edge in graph.edges} == {
+        EdgeType.relates_to,
+        EdgeType.contains,
+        EdgeType.mentions,
+        EdgeType.co_occurs_with,
+    }
 
 
 def test_build_graph_fails_instead_of_silent_rule_fallback_when_llm_is_enabled(tmp_storage, monkeypatch):

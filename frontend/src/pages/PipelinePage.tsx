@@ -7,6 +7,8 @@ import { useToast } from "../components/primitives/Toast";
 import type { CourseSession, SessionStatus } from "../types";
 import "./PipelinePage.css";
 
+const pipelineRunsInFlight = new Set<string>();
+
 // ── PipelineCanvas ────────────────────────────────────────────────────────────
 function PipelineCanvas({
   phase,
@@ -281,32 +283,36 @@ export function PipelinePage() {
   // Trigger pipeline
   useEffect(() => {
     if (!id || triggered.current) return;
+    if (pipelineRunsInFlight.has(id)) return;
+    pipelineRunsInFlight.add(id);
     triggered.current = true;
 
     async function run() {
       const sess = (await getSession(id!)) as CourseSession;
       setSession(sess);
-      const shouldReingest = sess.status === "failed";
-
       const pdfs = sess.source_files.filter(
-        (f) => f.kind === "pdf" && (!f.ingested || shouldReingest),
+        (f) => f.kind === "pdf" && !f.ingested,
       );
       for (const f of pdfs) {
         try {
           await ingestPdf({ session_id: id!, source_id: f.source_id });
         } catch (e) {
-          toast(`PDF 解析失败: ${String(e)}`, "error");
+          toast(`PDF ingest failed: ${String(e)}`, "error");
+          setLocalStatus(null);
+          return;
         }
       }
 
       const audios = sess.source_files.filter(
-        (f) => f.kind === "audio" && (!f.ingested || shouldReingest),
+        (f) => f.kind === "audio" && !f.ingested,
       );
       for (const f of audios) {
         try {
           await ingestAudio({ session_id: id!, source_id: f.source_id });
         } catch (e) {
-          toast(`音频解析失败: ${String(e)}`, "error");
+          toast(`Audio ingest failed: ${String(e)}`, "error");
+          setLocalStatus(null);
+          return;
         }
       }
 
@@ -320,7 +326,7 @@ export function PipelinePage() {
       }
     }
 
-    void run();
+    void run().finally(() => pipelineRunsInFlight.delete(id));
   }, [id, toast]);
 
   // Auto-navigate when ready

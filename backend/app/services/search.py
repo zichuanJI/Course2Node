@@ -89,7 +89,12 @@ def get_subgraph(session_id: uuid.UUID, center_concept_id: str, depth: int = 1) 
         if current_depth >= depth:
             continue
         for edge in graph.edges:
-            if edge.source != current or edge.edge_type not in {EdgeType.relates_to, EdgeType.co_occurs_with}:
+            if edge.source != current or edge.edge_type not in {
+                EdgeType.relates_to,
+                EdgeType.co_occurs_with,
+                EdgeType.mentions,
+                EdgeType.contains,
+            }:
                 continue
             target = edge.target
             if target not in concept_by_id:

@@ -11,6 +11,15 @@ from app.providers.llm.openai_compatible import OpenAICompatibleLLMProvider
 from app.services.text_utils import canonicalize_term, is_reasonable_term, normalize_text
 
 GRAPH_SYSTEM_PROMPT = """\
+关系类型总规则：即使后文出现更窄或旧的描述，也必须以本规则为准。
+- edge_type 必须是 RELATES_TO / CO_OCCURS_WITH / MENTIONS / CONTAINS 之一。
+- RELATES_TO 用于明确、可解释的语义关系，必须带 relation_type。
+- relation_type 只能出现在 RELATES_TO 上，且只能是 is_a / part_of / prerequisite_of / causes / used_for / similar_to。
+- CO_OCCURS_WITH 表示两个概念在同一局部上下文中反复共同出现，但文本没有说明明确语义方向；不要带 relation_type。
+- MENTIONS 表示 source 概念直接提及、命名、测量、检验或讨论 target 概念；不要带 relation_type。
+- CONTAINS 表示 source 主题、模型、章节或概念包含、分组、分解出 target 概念，或 target 是 source 的组成部分；不要带 relation_type。
+- 不要为了连通性编造边；没有明确文本依据就不要输出关系。
+
 你是课程知识图谱抽取器。你的任务是把课堂 slides / notes / transcript 的文本片段清洗为结构化知识点图候选。
 
 核心目标：
@@ -31,11 +40,14 @@ GRAPH_SYSTEM_PROMPT = """\
 - “关系数据结构及形式化定义”这类章节标题不能直接作为概念，必须拆成真正概念
 
 关系限制：
-- RELATES_TO 只能用于明确、可解释的语义关系
-- relation_type 只能是 is_a / part_of / prerequisite_of / causes / used_for / similar_to
-- CO_OCCURS_WITH 仅表示高频共现，不表示明确语义
-- 不要为了连通性补边；没有明确语义依据就不要输出关系
-- 不输出引用、页码、来源说明、chunk_id 或 evidence 字段
+- edge_type 必须是 RELATES_TO / CO_OCCURS_WITH / MENTIONS / CONTAINS 之一。
+- RELATES_TO 用于明确、可解释的语义关系，必须带 relation_type。
+- relation_type 只能出现在 RELATES_TO 上，且只能是 is_a / part_of / prerequisite_of / causes / used_for / similar_to。
+- CO_OCCURS_WITH 表示两个概念在同一局部上下文中反复共同出现，但文本没有说明明确语义方向；不要带 relation_type。
+- MENTIONS 表示 source 概念直接提及、命名、测量、检验或讨论 target 概念；不要带 relation_type。
+- CONTAINS 表示 source 主题、模型、章节或概念包含、分组、分解出 target 概念，或 target 是 source 的组成部分；不要带 relation_type。
+- 不要为了连通性补边；没有明确文本依据就不要输出关系。
+- 不输出引用、页码、来源说明、chunk_id 或 evidence 字段。
 
 节点要求：
 - 每个概念都要像一个可展开的小型学习卡片，而不只是一个词条。
@@ -251,8 +263,15 @@ def _build_graph_prompt(batch: list[EvidenceChunk]) -> str:
         "  ],",
         '  "relations": [',
         '    {"source_canonical_name": "...", "target_canonical_name": "...", "edge_type": "RELATES_TO", "relation_type": "is_a", "confidence": 0.8}',
+        '    {"source_canonical_name": "...", "target_canonical_name": "...", "edge_type": "CONTAINS", "confidence": 0.75}',
         "  ]",
         "}",
+        "关系类型规则：",
+        "- edge_type 必须是 RELATES_TO / CO_OCCURS_WITH / MENTIONS / CONTAINS 之一。",
+        "- RELATES_TO 表示明确语义关系，如层级、因果、相似、前置、用途或组成；必须带 relation_type。",
+        "- CO_OCCURS_WITH 表示两个概念在同一局部上下文中反复共同出现，但没有明确语义方向；不要带 relation_type。",
+        "- MENTIONS 表示 source 概念直接提及、命名、测量、检验或讨论 target 概念；不要带 relation_type。",
+        "- CONTAINS 表示 source 主题、模型、章节或概念包含、分组、分解出 target 概念，或 target 是 source 的组成部分；不要带 relation_type。",
         "要求：",
         "- 不要输出 evidence_chunk_ids、chunk_id、页码、引用或来源说明",
         "- 同义词、中英文别名请合并到同一个概念",
@@ -260,9 +279,6 @@ def _build_graph_prompt(batch: list[EvidenceChunk]) -> str:
         "- 默认丢弃人名、学号、课程号、专业号、姓名、性别、年龄、表格示例值、页码和章节编号",
         "- 如果一个词只是例子里的字段或记录值，不要输出为概念",
         "- definition 必须是一句教学定义；summary/key_points 要能作为节点小笔记阅读",
-        "- edge_type 只能是 RELATES_TO 或 CO_OCCURS_WITH",
-        "- relation_type 只能出现在 RELATES_TO 上",
-        "- RELATES_TO 必须有明确语义，CO_OCCURS_WITH 只在强共现时使用",
         "- 对当前 batch 中出现的可教学知识点尽量完整抽取，不要因为全局数量限制丢掉有效知识点",
         "- 若当前 batch 知识点很多，优先保留有定义、操作、公式、约束、模型或方法说明的概念",
         "- 为避免输出过长，每个字符串字段尽量控制在 90 个中文字符以内",
@@ -281,7 +297,10 @@ def _build_compact_graph_prompt(batch: list[EvidenceChunk]) -> str:
         "上一次 JSON 输出过长或被截断。请重新抽取更小、更紧凑的课程知识图谱。",
         "只输出 JSON object，不要 markdown，不要解释。",
         "格式：",
-        '{"concepts":[{"name":"","canonical_name":"","aliases":[],"definition":"","summary":"","key_points":[],"tags":[],"prerequisites":[],"applications":[]}],"relations":[{"source_canonical_name":"","target_canonical_name":"","edge_type":"RELATES_TO","relation_type":"used_for","confidence":0.8}]}',
+        '{"concepts":[{"name":"","canonical_name":"","aliases":[],"definition":"","summary":"","key_points":[],"tags":[],"prerequisites":[],"applications":[]}],"relations":[{"source_canonical_name":"","target_canonical_name":"","edge_type":"RELATES_TO","relation_type":"used_for","confidence":0.8},{"source_canonical_name":"","target_canonical_name":"","edge_type":"CONTAINS","confidence":0.75}]}',
+        "edge_type 只能是 RELATES_TO / CO_OCCURS_WITH / MENTIONS / CONTAINS。",
+        "RELATES_TO 必须带 relation_type；CO_OCCURS_WITH、MENTIONS、CONTAINS 必须省略 relation_type。",
+        "MENTIONS 用于直接提及、命名、测量、检验或讨论；CONTAINS 用于组成、包含、分组或分解结构。",
         "硬性限制：",
         "- concepts 最多 6 个，只选章节主线概念",
         "- relations 最多 8 条，只保留最明确的语义关系",

@@ -198,7 +198,8 @@ python3 -m venv .venv
 ```powershell
 cd backend
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip wheel packaging "setuptools==69.5.1" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com; .\.venv\Scripts\python.exe -m pip install -r requirements.txt --no-build-isolation -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+.\.venv\Scripts\python.exe -m pip install --upgrade pip wheel packaging "setuptools==69.5.1" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt --no-build-isolation -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
