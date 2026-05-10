@@ -1,0 +1,110 @@
+[2m22:27:34[22m [31m[1m[vite][22m[39m [31mInternal server error: G:\数据科学与数据分析\CourseNote\Course2Node\frontend\src\components\graph\ConceptGraph.tsx: Unexpected keyword 'import'. (14:0)
+
+[0m [90m 12 |[31m   useNodesState[33m,[31m
+ [90m 13 |[31m   useEdgesState[33m,[31m
+[31m[1m>[22m[31m[90m 14 |[31m [36mimport[31m {
+ [90m    |[31m [31m[1m^[22m[31m
+ [90m 15 |[31m   type [33mConnection[31m[33m,[31m
+ [90m 16 |[31m } [36mfrom[31m [32m"reactflow"[31m[33m;[31m
+ [90m 17 |[31m [36mimport[31m { layoutWithForce[33m,[31m layoutWithRadial[33m,[31m layoutWithCluster[33m,[31m layoutWithDagre } [36mfrom[31m [32m"./layoutUtils"[31m[33m;[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mG:/数据科学与数据分析/CourseNote/Course2Node/frontend/src/components/graph/ConceptGraph.tsx[39m:14:0
+[33m  13 |    useEdgesState,
+  14 |  import {
+  15 |    type Connection,
+     |      ^
+  16 |  } from "reactflow";
+  17 |  import { layoutWithForce, layoutWithRadial, layoutWithCluster, layoutWithDagre } from "./layoutUtils";[39m
+      at constructor (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptParserMixin.checkReservedWord (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12224:12)
+      at TypeScriptParserMixin.checkReservedWord (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:9310:13)
+      at TypeScriptParserMixin.parseImportSpecifier (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14414:12)
+      at TypeScriptParserMixin.parseImportSpecifier (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:10148:18)
+      at TypeScriptParserMixin.parseNamedImportSpecifiers (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14398:36)
+      at TypeScriptParserMixin.parseImportSpecifiersAndAfter (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14242:37)
+      at TypeScriptParserMixin.parseImport (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14235:17)
+      at TypeScriptParserMixin.parseImport (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:9353:26)
+      at TypeScriptParserMixin.parseStatementContent (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12876:27)
+      at TypeScriptParserMixin.parseStatementContent (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12767:17)
+      at TypeScriptParserMixin.parseModuleItem (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12744:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:13316:36)
+      at TypeScriptParserMixin.parseBlockBody (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:13309:10)
+      at TypeScriptParserMixin.parseProgram (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12622:10)
+      at TypeScriptParserMixin.parseTopLevel (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12612:25)
+      at TypeScriptParserMixin.parse (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14488:25)
+      at TypeScriptParserMixin.parse (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:10126:18)
+      at parse (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14522:38)
+      at parser (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:261:32)
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:223:11)
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:189:28
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:113:33
+      at step (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:287:14)
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:223:11)
+[2m22:27:34[22m [31m[1m[vite][22m[39m [31mInternal server error: G:\数据科学与数据分析\CourseNote\Course2Node\frontend\src\components\graph\ConceptGraph.tsx: Unexpected keyword 'import'. (14:0)
+
+[0m [90m 12 |[31m   useNodesState[33m,[31m
+ [90m 13 |[31m   useEdgesState[33m,[31m
+[31m[1m>[22m[31m[90m 14 |[31m [36mimport[31m {
+ [90m    |[31m [31m[1m^[22m[31m
+ [90m 15 |[31m   type [33mConnection[31m[33m,[31m
+ [90m 16 |[31m } [36mfrom[31m [32m"reactflow"[31m[33m;[31m
+ [90m 17 |[31m [36mimport[31m { layoutWithForce[33m,[31m layoutWithRadial[33m,[31m layoutWithCluster[33m,[31m layoutWithDagre } [36mfrom[31m [32m"./layoutUtils"[31m[33m;[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mG:/数据科学与数据分析/CourseNote/Course2Node/frontend/src/components/graph/ConceptGraph.tsx[39m:14:0
+[33m  13 |    useEdgesState,
+  14 |  import {
+  15 |    type Connection,
+     |      ^
+  16 |  } from "reactflow";
+  17 |  import { layoutWithForce, layoutWithRadial, layoutWithCluster, layoutWithDagre } from "./layoutUtils";[39m
+      at constructor (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:6599:19)
+      at TypeScriptParserMixin.checkReservedWord (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12224:12)
+      at TypeScriptParserMixin.checkReservedWord (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:9310:13)
+      at TypeScriptParserMixin.parseImportSpecifier (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14414:12)
+      at TypeScriptParserMixin.parseImportSpecifier (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:10148:18)
+      at TypeScriptParserMixin.parseNamedImportSpecifiers (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14398:36)
+      at TypeScriptParserMixin.parseImportSpecifiersAndAfter (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14242:37)
+      at TypeScriptParserMixin.parseImport (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14235:17)
+      at TypeScriptParserMixin.parseImport (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:9353:26)
+      at TypeScriptParserMixin.parseStatementContent (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12876:27)
+      at TypeScriptParserMixin.parseStatementContent (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:9508:18)
+      at TypeScriptParserMixin.parseStatementLike (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12767:17)
+      at TypeScriptParserMixin.parseModuleItem (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12744:17)
+      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:13316:36)
+      at TypeScriptParserMixin.parseBlockBody (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:13309:10)
+      at TypeScriptParserMixin.parseProgram (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12622:10)
+      at TypeScriptParserMixin.parseTopLevel (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:12612:25)
+      at TypeScriptParserMixin.parse (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14488:25)
+      at TypeScriptParserMixin.parse (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:10126:18)
+      at parse (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\parser\lib\index.js:14522:38)
+      at parser (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\parser\index.js:41:34)
+      at parser.next (<anonymous>)
+      at normalizeFile (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\transformation\normalize-file.js:64:37)
+      at normalizeFile.next (<anonymous>)
+      at run (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\transformation\index.js:22:50)
+      at run.next (<anonymous>)
+      at transform (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\transform.js:22:33)
+      at transform.next (<anonymous>)
+      at step (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:261:32)
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:223:11)
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:189:28
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\@babel\core\lib\gensync-utils\async.js:67:7
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:113:33
+      at step (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:287:14)
+      at G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:273:13
+      at async.call.result.err.err (G:\数据科学与数据分析\CourseNote\Course2Node\frontend\node_modules\gensync\index.js:223:11)

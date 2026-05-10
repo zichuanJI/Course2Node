@@ -5,3 +5,38 @@
 [2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
 [2m20:08:44[22m [36m[1m[vite][22m[39m [32m../.env changed, restarting server...[39m
 [2m20:08:44[22m [36m[1m[vite][22m[39m server restarted.
+[2m20:46:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptDrawer.tsx[22m
+[2m20:47:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptDrawer.tsx[22m
+[2m20:47:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptDrawer.tsx[22m
+[2m21:35:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/layout/CommandPalette.tsx, /src/pages/PipelinePage.tsx, /src/pages/NewSessionPage.tsx, /src/pages/HomePage.tsx, /src/pages/WorkspacePage.tsx, /src/components/notes/NoteView.tsx, /src/components/search/SearchPanel.tsx, /src/components/graph/ConceptDrawer.tsx, /src/components/notes/ExportMenu.tsx, /src/components/graph/ConceptGraph.tsx[22m
+[2m21:35:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/HomePage.tsx[22m
+[2m21:35:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/HomePage.tsx[22m
+[2m21:36:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/HomePage.css[22m
+[2m21:37:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m21:38:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkspacePage.tsx[22m
+[2m21:38:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkspacePage.tsx[22m
+[2m21:38:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m21:39:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkspacePage.tsx[22m
+[2m21:39:30[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkspacePage.css[22m
+[2m21:39:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx[22m
+[2m21:40:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/HomePage.tsx[22m
+[2m21:42:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/HomePage.tsx[22m
+[2m21:42:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/CoursePipelinePage.tsx[22m
+[2m21:56:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:02:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptDrawer.tsx[22m
+[2m22:02:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkspacePage.tsx[22m
+[2m22:03:15[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkspacePage.css[22m
+[2m22:17:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:17:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkspacePage.tsx[22m
+[2m22:26:55[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:27:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:27:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32m✨ new dependencies optimized: [33mdagre[32m[39m
+[2m22:27:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32m✨ optimized dependencies changed. reloading[39m
+[2m22:27:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:27:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:33:49[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:36:41[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:39:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:40:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkspacePage.tsx[22m
+[2m22:40:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
+[2m22:41:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/graph/ConceptGraph.tsx[22m
