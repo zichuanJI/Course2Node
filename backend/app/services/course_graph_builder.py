@@ -34,8 +34,15 @@ from app.storage.local import (
 logger = logging.getLogger(__name__)
 
 
-def build_course_graph(course_title: str, top_n_core: int = 15) -> GraphArtifact:
-    """Merge all per-lecture graphs for *course_title* into a single course graph."""
+def build_course_graph(course_title: str, top_n_core: int = 15, top_n_per_session: int = 6) -> GraphArtifact:
+    """Merge all per-lecture graphs for *course_title* into a single course graph.
+
+    Args:
+        course_title: The course to merge.
+        top_n_core: Number of core concepts in the final hierarchy.
+        top_n_per_session: Only keep the top-N concepts (by importance_score)
+            from each sub-graph before merging, to avoid an overcrowded total graph.
+    """
 
     # ── 1. Locate or create virtual session ──────────────────────────────
     virtual = find_course_session(course_title)
@@ -53,7 +60,7 @@ def build_course_graph(course_title: str, top_n_core: int = 15) -> GraphArtifact
     save_session(virtual)
 
     try:
-        return _do_merge(virtual, course_title, top_n_core)
+        return _do_merge(virtual, course_title, top_n_core, top_n_per_session)
     except Exception as exc:
         virtual.status = SessionStatus.failed
         virtual.error_message = str(exc)
@@ -62,7 +69,7 @@ def build_course_graph(course_title: str, top_n_core: int = 15) -> GraphArtifact
         raise
 
 
-def _do_merge(virtual: CourseSession, course_title: str, top_n_core: int) -> GraphArtifact:
+def _do_merge(virtual: CourseSession, course_title: str, top_n_core: int, top_n_per_session: int) -> GraphArtifact:
     # ── 2. Collect sub-graphs ────────────────────────────────────────────
     sessions = list_sessions_by_course(course_title)
     ready = [
@@ -84,6 +91,9 @@ def _do_merge(virtual: CourseSession, course_title: str, top_n_core: int) -> Gra
 
     if not sub_graphs:
         raise ValueError("所有子图谱文件缺失，无法合并。")
+
+    # ── 2b. Keep only top-N concepts per sub-graph ───────────────────────
+    sub_graphs = _trim_subgraphs(sub_graphs, top_n_per_session)
 
     # ── 3. Merge concepts ────────────────────────────────────────────────
     merged_concepts = _merge_concepts(sub_graphs)
@@ -129,6 +139,43 @@ def _do_merge(virtual: CourseSession, course_title: str, top_n_core: int) -> Gra
 
 
 # ── Merge helpers ────────────────────────────────────────────────────────────
+
+
+def _trim_subgraphs(sub_graphs: list[GraphArtifact], top_n: int) -> list[GraphArtifact]:
+    """Keep only the top-N concepts (by importance_score) from each sub-graph.
+
+    Edges are filtered to only retain those between the kept concepts.
+    This reduces the total number of nodes in the aggregate graph and avoids clutter.
+    """
+    trimmed: list[GraphArtifact] = []
+    for graph in sub_graphs:
+        if len(graph.concepts) <= top_n:
+            trimmed.append(graph)
+            continue
+
+        # Sort by importance_score descending, take top-N
+        sorted_concepts = sorted(graph.concepts, key=lambda c: c.importance_score, reverse=True)
+        kept_concepts = sorted_concepts[:top_n]
+        kept_ids = {c.concept_id for c in kept_concepts}
+
+        # Filter edges to only those between kept concepts
+        kept_edges = [
+            e for e in graph.edges
+            if e.source in kept_ids and e.target in kept_ids
+        ]
+
+        trimmed.append(graph.model_copy(update={
+            "concepts": kept_concepts,
+            "edges": kept_edges,
+        }))
+        logger.info(
+            "Trimmed sub-graph %s: %d -> %d concepts, %d -> %d edges",
+            graph.session_id,
+            len(graph.concepts), len(kept_concepts),
+            len(graph.edges), len(kept_edges),
+        )
+
+    return trimmed
 
 
 def _merge_concepts(sub_graphs: list[GraphArtifact]) -> list[ConceptNode]:

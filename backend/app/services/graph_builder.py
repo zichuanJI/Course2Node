@@ -25,6 +25,7 @@ from app.services.text_utils import (
     cosine_similarity,
     extract_candidate_terms,
     hash_embedding,
+    is_junk_concept,
     summarize_text,
 )
 from app.storage.local import list_ingest_artifacts, load_session, save_graph_artifact, save_session
@@ -61,6 +62,9 @@ def build_graph(session_id: uuid.UUID) -> GraphArtifact:
         concepts, edges = _extract_graph_structure(chunks)
         if not concepts:
             raise ValueError("No concepts could be extracted from the ingested sources.")
+        concepts, edges = _filter_junk_concepts(concepts, edges)
+        if not concepts:
+            raise ValueError("No valid concepts remain after filtering out junk terms.")
         _apply_concept_embeddings(concepts)
         _assign_graph_metrics(concepts, edges)
         clusters = _build_clusters(concepts, edges)
@@ -89,6 +93,23 @@ def build_graph(session_id: uuid.UUID) -> GraphArtifact:
         session.updated_at = datetime.utcnow()
         save_session(session)
         raise
+
+
+def _filter_junk_concepts(
+    concepts: list[ConceptNode], edges: list[GraphEdge]
+) -> tuple[list[ConceptNode], list[GraphEdge]]:
+    """Remove concepts that look like PDF artifacts, LaTeX fragments, or other junk.
+
+    Also removes edges that reference any removed concept.
+    This runs after extraction but before embedding/metric computation.
+    """
+    kept = [c for c in concepts if not is_junk_concept(c.canonical_name)]
+    removed = len(concepts) - len(kept)
+    if removed > 0:
+        logger.info("Filtered out %d junk concepts (of %d total).", removed, len(concepts))
+        kept_ids = {c.concept_id for c in kept}
+        edges = [e for e in edges if e.source in kept_ids and e.target in kept_ids]
+    return kept, edges
 
 
 def _extract_graph_structure(chunks: list[EvidenceChunk]) -> tuple[list[ConceptNode], list[GraphEdge]]:

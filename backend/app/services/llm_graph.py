@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.core.types import EdgeType, EvidenceChunk, RelationType
 from app.providers.llm.openai_compatible import OpenAICompatibleLLMProvider
-from app.services.text_utils import canonicalize_term, is_reasonable_term, normalize_text
+from app.services.text_utils import canonicalize_term, is_junk_concept, is_reasonable_term, normalize_text
 
 GRAPH_SYSTEM_PROMPT = """\
 关系类型总规则：即使后文出现更窄或旧的描述，也必须以本规则为准。
@@ -68,12 +68,17 @@ RELATES_TO 细分关系判定细则：
 - 运算名、完整性类别、查询方法、模式、语言
 - 关键术语的中英文表达或缩写
 
-直接剔除：
+直接剔除（零容忍，绝对不输出为概念）：
 - 页眉页脚、目录残片、章节号、页码、表号、小结、学习目标
-- 示例数据、表格示例值、纯案例中的记录值
-- 人名、学号、课程号、专业号、姓名、性别、年龄等字段型属性名
+- 示例数据、表格示例值、纯案例中的记录值（如"人员三""a-305""一个工资表"）
+- 人名（如张三、李四、刘晨、王敏）、学号、课程号、专业号、姓名、性别、年龄等字段型属性名
 - 只在例子里有意义的实体，即使频率高也不要保留
-- “关系数据结构及形式化定义”这类章节标题不能直接作为概念，必须拆成真正概念
+- "关系数据结构及形式化定义"这类章节标题不能直接作为概念，必须拆成真正概念
+- 太泛化的通用英文词：internal, external, instance, database, record, file, system, program, function, structure, operation, model, field, node, key, value, type, set, group, level, entry, link, path 等。这些词单独出现不是概念，必须带上修饰语才有意义（如"关系数据库""B+树索引"）
+- 太泛化的通用中文词：表、图、值、项、组、类、库、码、记录、字段、系统、文件、程序、操作、功能、用户、结果
+- 短缩写（如 dba, dbtg, db, os, io）除非它在本讲中有明确定义
+- 以量词或指示词开头的短语（如"一个工资表""某系统""这个表""表中有表"）——这些是句子片段，不是概念
+- 编号标识（如 a-305, a-102, a-217, dbch01, ch03）
 
 关系限制：
 - edge_type 必须是 RELATES_TO / CO_OCCURS_WITH / MENTIONS / CONTAINS 之一。
@@ -126,34 +131,28 @@ NOISE_PATTERNS = [
     re.compile(r"^第[一二三四五六七八九十百\d]+[章节讲]$"),
     re.compile(r"^表\s*\d+(\.\d+)*$"),
     re.compile(r"^dbch\d+$", re.IGNORECASE),
+    re.compile(r"^[a-z]{1,4}[-_]\d{1,4}$", re.IGNORECASE),   # a-305, cs_101
+    re.compile(r"^[a-z]{1,2}\d*$", re.IGNORECASE),            # dba, a1, db
+    re.compile(r"^人员[一二三四五六七八九十\d]+$"),              # 人员三
+    re.compile(r"^实例[一二三四五六七八九十\d]+$"),              # 实例一
+    re.compile(r"^(一个|一张|某个?|每个?|这个|那个)"),           # demonstrative-prefixed
+    re.compile(r"[中里]有[一二三四五六七八九十\d]"),             # 表中有表, X中有Y
 ]
 NOISE_SUBSTRINGS = {
-    "本章",
-    "主要内容",
-    "本节",
-    "目录",
-    "contents",
-    "outline",
-    "example",
-    "learning objective",
-    "学习目标",
-    "小结",
-    "student",
-    "学号",
-    "课程号",
-    "专业号",
-    "姓名",
-    "性别",
-    "年龄",
-    "张清玫",
-    "刘逸",
-    "李勇",
-    "刘晨",
-    "王敏",
-    "信息专业",
-    "计算机专业",
+    # Chinese structural / meta
+    "本章", "主要内容", "本节", "目录", "小结",
+    "学习目标", "授课大纲",
+    # English structural
+    "contents", "outline", "example", "learning objective",
+    "student", "page",
+    # Example data field names & person names
+    "学号", "课程号", "专业号", "姓名", "性别", "年龄",
+    "成绩", "工资", "薪资", "奖金", "津贴",
+    "张三", "李四", "王五", "赵六",
+    "张清玫", "刘逸", "李勇", "刘晨", "王敏",
+    # Institutional
+    "信息专业", "计算机专业",
     "关系数据结构及形式化定义",
-    "page",
 }
 VALID_RELATION_TYPES = {item.value for item in RelationType}
 
@@ -490,6 +489,9 @@ def _looks_like_noise(value: str) -> bool:
     if len(value) > 48:
         return True
     if len(value.split()) > 6:
+        return True
+    # Delegate to the unified junk concept filter in text_utils
+    if is_junk_concept(value):
         return True
     if any(pattern.match(value) for pattern in NOISE_PATTERNS):
         return True

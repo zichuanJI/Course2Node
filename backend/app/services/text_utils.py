@@ -27,6 +27,153 @@ ZH_STOPWORDS = {
     "特征", "特点", "情况", "影响", "作用", "意义", "目的", "使用", "产生", "发现",
 }
 
+# ── Concept-level junk filter ────────────────────────────────────────────────
+# Terms that frequently appear as high-importance "concepts" but are actually
+# PDF structural elements, LaTeX command fragments, filename remnants, etc.
+
+CONCEPT_STOPWORDS = {
+    # PDF structural elements
+    "footer", "header", "footnote", "endnote", "page", "pages",
+    "title", "subtitle", "caption", "figure", "fig", "table",
+    "appendix", "reference", "references", "bibliography",
+    "contents", "index", "acknowledgement", "abstract",
+    # LaTeX commands and fragments
+    "frac", "mathbf", "mathrm", "mathit", "mathcal", "mathbb",
+    "textbf", "textit", "textrm", "texttt", "emph",
+    "left", "right", "ight", "big", "bigg",
+    "brace", "overbrace", "underbrace",
+    "sqrt", "sum", "prod", "int", "lim", "inf", "sup",
+    "overrightarrow", "overline", "underline",
+    "begin", "end", "item", "label", "ref", "cite",
+    "alpha", "beta", "gamma", "delta", "epsilon", "theta",
+    "lambda", "sigma", "omega", "phi", "psi", "mu", "pi",
+    "vert", "imes", "cdot", "ldots", "cdots", "dots",
+    "hspace", "vspace", "quad", "qquad",
+    "centering", "raggedright", "raggedleft",
+    "newline", "newpage", "clearpage",
+    # Generic English words too vague to be concepts
+    "data", "example", "examples", "case", "cases", "note", "notes",
+    "section", "chapter", "part", "unit", "lesson",
+    "student", "students", "teacher", "class", "classes",
+    "result", "results", "answer", "solution", "solutions",
+    "type", "types", "kind", "kinds", "form", "forms",
+    "way", "ways", "step", "steps", "method", "methods",
+    "value", "values", "number", "numbers", "name", "names",
+    "input", "output", "process", "system", "systems",
+    "internal", "external", "instance", "instances",
+    "database", "record", "records", "field", "fields",
+    "file", "files", "program", "programs",
+    "level", "levels", "group", "groups", "set", "sets",
+    "model", "function", "structure", "structures",
+    "object", "objects", "element", "elements",
+    "operation", "operations", "condition", "conditions",
+    "problem", "problems", "task", "tasks",
+    "point", "points", "line", "lines",
+    "list", "node", "link", "path",
+    "key", "keys", "entry", "entries",
+    "property", "properties", "feature", "features",
+    "rule", "rules", "pattern", "patterns",
+    # Generic abbreviations that are not real concepts without context
+    "dba", "dbtg", "dbms", "db", "os", "io", "cpu", "ram",
+    "api", "url", "xml", "html", "css", "http",
+    # Chinese generic
+    "数据", "例子", "例题", "样例", "学生", "老师", "教师",
+    "图片", "图表", "表格", "章节", "习题", "作业",
+    "定义一", "定义二", "定义三",
+    "数据一", "数据二", "数据三",
+    "基本概念", "四个基本概念",
+    # Chinese example/instance data fragments
+    "人员", "人员一", "人员二", "人员三", "人员四", "人员五",
+    "工资", "工资表", "一个工资表", "一张表", "一个表",
+    "表中有表", "一张工资表",
+    "记录", "一条记录", "一个记录", "每条记录",
+    "字段", "一个字段", "每个字段",
+    "系统", "一个系统", "某系统",
+    "文件", "一个文件", "某文件",
+    "程序", "一个程序", "某程序",
+    "操作", "一个操作", "某操作",
+    "功能", "一个功能", "某功能",
+    "用户", "一个用户", "某用户",
+    "结果", "一个结果", "某结果",
+    "例如", "比如", "如下",
+    "其中", "以上", "以下", "如图", "如表",
+    "实例", "实例一", "实例二", "实例三",
+    # Common single-character-meaning Chinese that are too vague alone
+    "表", "图", "值", "项", "组", "类", "库", "码",
+}
+
+# Regex patterns for junk concept canonical names
+_JUNK_PATTERNS = [
+    re.compile(r"^[a-z]{1,3}\d+$"),              # e.g. "a305", "ch01", "r__"
+    re.compile(r"^[a-z]-\d+$"),                   # e.g. "a-305", "a-102"
+    re.compile(r"^[a-z]\d*-\d+$"),                # e.g. "a-305", "b2-3"
+    re.compile(r"^dbch\d+$"),                      # e.g. "dbch01"
+    re.compile(r"^ch\d+$"),                        # e.g. "ch01"
+    re.compile(r"^\d+[a-z]*$"),                    # e.g. "112", "2a"
+    re.compile(r"^frac\d+$"),                      # e.g. "frac112"
+    re.compile(r"^delta\d+$"),                     # e.g. "delta2"
+    re.compile(r"^[a-z]_+$"),                      # e.g. "r__", "s_"
+    re.compile(r"^(fig|table|eq|sec|ch|ref)\d*$"), # e.g. "fig1", "table2"
+    re.compile(r"^[a-z]{1,4}[-_]\d{1,4}$"),        # e.g. "a-305", "cs-101", "db_01"
+    re.compile(r"^\d{1,4}[-_][a-z]{1,4}$"),        # e.g. "305-a"
+    re.compile(r"^[a-z]{1,2}$"),                   # single/double letter: "a", "db"
+    re.compile(r"^[\d.]+$"),                        # any pure digit/dot sequence
+    re.compile(r"^[a-z]{1,4}\s+\d{1,4}$"),         # canonicalized "a 305", "cs 101" (hyphen→space)
+    re.compile(r"^\d{1,4}\s+[a-z]{1,4}$"),         # canonicalized "305 a"
+    re.compile(r"^人员[一二三四五六七八九十\d]+$"),   # "人员三", "人员1"
+    re.compile(r"^实例[一二三四五六七八九十\d]+$"),   # "实例一", "实例2"
+    re.compile(r"^(一个|一张|某个?|每个?|这个|那个)"),  # phrases starting with demonstratives
+]
+
+# Substrings that make a concept name look like example data or a fragment
+_JUNK_SUBSTRINGS = {
+    "课程号", "学号", "专业号", "姓名", "性别", "年龄",
+    "成绩", "工资", "薪资", "奖金", "津贴",
+    "张三", "李四", "王五", "赵六",
+    "张清玫", "刘逸", "李勇", "刘晨", "王敏",
+    "page ", "slide ", "figure ",
+}
+
+
+def is_junk_concept(canonical_name: str) -> bool:
+    """Return True if the canonical name looks like a PDF/LaTeX artifact or junk."""
+    name = canonical_name.strip().lower()
+    if not name:
+        return True
+    # Single character
+    if len(name) <= 1:
+        return True
+    # Pure digits or digits with dots/spaces
+    if re.fullmatch(r"[\d\s.]+", name):
+        return True
+    # Exact match in stopwords
+    if name in CONCEPT_STOPWORDS:
+        return True
+    # Match junk patterns (check both canonical form and compact no-space form,
+    # because canonicalize_term turns "a-305" into "a 305")
+    compact = name.replace(" ", "")
+    for pattern in _JUNK_PATTERNS:
+        if pattern.match(name) or pattern.match(compact):
+            return True
+    # Contains junk substrings (e.g. example person names, field names)
+    for fragment in _JUNK_SUBSTRINGS:
+        if fragment in name:
+            return True
+    # All-ASCII names that are too short to be meaningful concepts (<=3 chars)
+    ascii_only = all(ord(c) < 128 for c in name.replace(" ", ""))
+    if ascii_only and len(name.replace(" ", "")) <= 3:
+        return True
+    # Chinese names that are just 2 characters and look like common words
+    stripped = name.replace(" ", "")
+    is_all_chinese = all("\u4e00" <= c <= "\u9fff" for c in stripped)
+    if is_all_chinese and len(stripped) <= 1:
+        return True
+    # Phrases that are clearly sentence fragments, not concepts (contains 中有/中的)
+    if re.search(r"[中里]有[一二三四五六七八九十\d]", name):
+        return True
+    return False
+
+
 PUNCT_RE = re.compile(r"[^\w\u4e00-\u9fff]+", re.UNICODE)
 EN_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
 ZH_RUN_RE = re.compile(r"[\u4e00-\u9fff]{2,}")

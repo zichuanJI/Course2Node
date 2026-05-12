@@ -16,7 +16,7 @@ router = APIRouter(prefix="/course", tags=["course"])
 async def build_course_graph_endpoint(request: BuildCourseGraphRequest):
     try:
         graph = await run_in_threadpool(
-            build_course_graph, request.course_title, request.top_n_core,
+            build_course_graph, request.course_title, request.top_n_core, request.top_n_per_session,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

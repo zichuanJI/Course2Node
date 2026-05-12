@@ -279,6 +279,7 @@ class BuildGraphRequest(BaseModel):
 class BuildCourseGraphRequest(BaseModel):
     course_title: str
     top_n_core: int = Field(default=15, ge=5, le=50)
+    top_n_per_session: int = Field(default=6, ge=3, le=50)
 
 
 class SearchRequest(BaseModel):

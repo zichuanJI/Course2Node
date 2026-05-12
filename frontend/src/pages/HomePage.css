@@ -219,6 +219,25 @@
   border-color: rgba(184, 93, 48, 0.22) !important;
 }
 
+.course-action-btn-regen {
+  color: var(--ink-3) !important;
+}
+
+.course-action-btn-regen:hover:not(:disabled) {
+  color: var(--accent) !important;
+  background: var(--accent-ghost) !important;
+  border-color: rgba(184, 93, 48, 0.18) !important;
+}
+
+.course-action-btn-regen:hover:not(:disabled) svg {
+  animation: spin-once 0.5s ease-in-out;
+}
+
+@keyframes spin-once {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 .session-row {
   display: grid;
   grid-template-columns: 56px 1fr auto auto auto 16px;
