@@ -14,27 +14,63 @@ class LocalBGEM3EmbedProvider(EmbedProvider):
         use_fp16: bool | None = None,
     ) -> None:
         try:
-            from sentence_transformers import SentenceTransformer  # type: ignore
+            import torch  # type: ignore
+            from transformers import AutoModel, AutoTokenizer  # type: ignore
         except ImportError as exc:
             raise RuntimeError(
-                "Local BGE-M3 embedding requires the `sentence-transformers` package."
+                "Local BGE-M3 embedding requires `torch` and `transformers`."
             ) from exc
 
         self.model_name = model_name or settings.embedding_local_model_name
         self.device = device or settings.embedding_local_device
         self.use_fp16 = settings.embedding_local_use_fp16 if use_fp16 is None else use_fp16
-        model_kwargs = {"device": self.device}
-        if self.use_fp16:
-            model_kwargs["model_kwargs"] = {"torch_dtype": "auto"}
-        self._model = SentenceTransformer(self.model_name, **model_kwargs)
+        self._torch = torch
+
+        try:
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            self._model = AutoModel.from_pretrained(self.model_name)
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to load local BGE-M3 model. "
+                "This usually means the local Hugging Face cache is incomplete or the current "
+                "`transformers` stack is incompatible with `BAAI/bge-m3`."
+            ) from exc
+
+        self._model.to(self.device)
+        self._model.eval()
+        if self.use_fp16 and str(self.device).startswith("cuda"):
+            self._model.half()
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        result = self._model.encode(
-            texts,
-            batch_size=settings.embedding_batch_size,
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-        )
-        return [vector.tolist() if hasattr(vector, "tolist") else list(vector) for vector in result]
+
+        vectors: list[list[float]] = []
+        max_length = self._safe_max_length()
+        batch_size = max(1, settings.embedding_batch_size)
+
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start:start + batch_size]
+            encoded = self._tokenizer(
+                batch,
+                padding=True,
+                truncation=True,
+                max_length=max_length,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(self.device) for key, value in encoded.items()}
+
+            with self._torch.no_grad():
+                outputs = self._model(**encoded)
+                cls_vectors = outputs.last_hidden_state[:, 0]
+                normalized = self._torch.nn.functional.normalize(cls_vectors, p=2, dim=1)
+
+            vectors.extend(normalized.detach().cpu().tolist())
+
+        return vectors
+
+    def _safe_max_length(self) -> int:
+        max_length = getattr(self._tokenizer, "model_max_length", 512)
+        if not isinstance(max_length, int) or max_length <= 0 or max_length > 8192:
+            return 8192
+        return max_length

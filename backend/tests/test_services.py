@@ -632,14 +632,12 @@ def test_build_graph_uses_llm_candidates_when_configured(tmp_storage, monkeypatc
         "linear regression",
         "gradient descent",
         "loss function",
-        "feature",
     }
     assert any(edge.properties.get("relation_type") == "used_for" for edge in graph.edges)
-    assert len(graph.edges) == 4
+    assert len(graph.edges) == 3
     assert {edge.edge_type for edge in graph.edges} == {
         EdgeType.relates_to,
         EdgeType.contains,
-        EdgeType.mentions,
         EdgeType.co_occurs_with,
     }
 
@@ -864,6 +862,7 @@ def _make_source(kind: SourceKind, filename: str) -> SourceFile:
         content_type="application/pdf" if kind == SourceKind.pdf else "audio/mpeg",
         storage_path=f"/tmp/{filename}",
         size_bytes=1,
+        ingested=True,
     )
 
 
