@@ -45,6 +45,12 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
     getSession(id).then((s) => setSession(s as CourseSession)).catch(() => {});
   }, [id]);
 
+  useEffect(() => {
+    if (conceptId) {
+      setDrawerCollapsed(false);
+    }
+  }, [conceptId]);
+
   if (!id) { navigate("/"); return null; }
 
   const selectedConcept = conceptId
@@ -219,6 +225,8 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
               sessionId={id}
               graphStyle={graphStyle}
               filterNodeIds={conceptId ? null : filterNodeIds}
+              onConceptSelect={() => {
+              }}
               onDrillDown={isHierarchical && !conceptId ? (cid) => {
                 if (!drillCoreId && courseMeta?.core_concept_ids.includes(cid)) {
                   // Drill into this core node's children
@@ -228,16 +236,21 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
                     return;
                   }
                 }
-                // Already drilled or no children: open concept drawer
-                setDrawerCollapsed(false);
-                setSearchParams({ concept: cid });
+                // Already drilled or no children: open or toggle concept drawer
+                if (conceptId === cid) {
+                  setDrawerCollapsed(true);
+                  setSearchParams({});
+                } else {
+                  setDrawerCollapsed(false);
+                  setSearchParams({ concept: cid });
+                }
               } : undefined}
             />
           </Suspense>
           {!drawerCollapsed && (
             <ConceptDrawer
               sessionId={id}
-              onClose={isHierarchical ? () => setDrawerCollapsed(true) : undefined}
+              onClose={() => setDrawerCollapsed(true)}
             />
           )}
           {/* Drawer reopen toggle – shown when drawer is collapsed but concept is selected */}

@@ -24,6 +24,7 @@ interface GraphProps {
   graphStyle?: string;
   filterNodeIds?: Set<string> | null;
   onDrillDown?: (conceptId: string) => void;
+  onConceptSelect?: (conceptId: string) => void;
 }
 
 const EDGE_COLORS: Record<string, string> = {
@@ -150,7 +151,7 @@ function subgraphToFlow(sub: SubgraphResponse, graphStyle: string): { nodes: Nod
   return applyLayout(nodes, edges, graphStyle);
 }
 
-export function ConceptGraph({ sessionId, graphStyle = "force", filterNodeIds, onDrillDown }: GraphProps) {
+export function ConceptGraph({ sessionId, graphStyle = "force", filterNodeIds, onDrillDown, onConceptSelect }: GraphProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const conceptId = searchParams.get("concept");
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
@@ -192,9 +193,16 @@ export function ConceptGraph({ sessionId, graphStyle = "force", filterNodeIds, o
         onDrillDown(node.id);
         return;
       }
-      setSearchParams({ concept: node.id });
+      if (conceptId === node.id) {
+        setSearchParams({});
+      } else {
+        setSearchParams({ concept: node.id });
+      }
+      if (onConceptSelect) {
+        onConceptSelect(node.id);
+      }
     },
-    [setSearchParams, onDrillDown, filterNodeIds],
+    [conceptId, setSearchParams, onDrillDown, filterNodeIds, onConceptSelect],
   );
 
   if (loading) {
