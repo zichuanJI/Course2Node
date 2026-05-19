@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 import pytest
 
 from app.core.types import (
+    ConceptNode,
+    CourseGraphMeta,
     CourseSession,
     EdgeType,
     EvidenceChunk,
     GenerateExamRequest,
     GenerateNotesRequest,
+    GraphArtifact,
+    GraphEdge,
     IngestArtifact,
     SessionStatus,
     SourceFile,
@@ -26,7 +31,14 @@ from app.services.llm_graph import (
     _select_graph_input_chunks,
 )
 from app.services.kimi_pdf import ExtractedPdfTextBlock, split_kimi_file_content
-from app.services.notes import _build_notes_prompt, _clean_section_markdown, _normalize_note_markdown, generate_notes
+from app.services.notes import (
+    _build_course_section_prompt,
+    _build_course_topic_graphs,
+    _build_notes_prompt,
+    _clean_section_markdown,
+    _normalize_note_markdown,
+    generate_notes,
+)
 from app.services.exam import EXAM_STYLE_RULES, LLMExamDocument, _build_exam_prompt, generate_exam
 from app.services.search import search_graph
 from app.config import settings
@@ -261,6 +273,73 @@ def test_generate_notes_preserves_markdown_newlines(tmp_storage, monkeypatch):
     assert "\n- **WHERE**：筛选行。" in note.sections[0].content_md
     assert not note.sections[0].content_md.startswith("## 单表查询")
     assert "\\n" not in note.sections[0].content_md
+
+
+def test_course_topic_graphs_do_not_repeat_expansion_nodes_across_core_sections():
+    core_a = _make_concept("course:a", "Core A", "core a", 1.0)
+    core_b = _make_concept("course:b", "Core B", "core b", 0.9)
+    shared = _make_concept("course:shared", "Shared Detail", "shared detail", 0.8)
+    a_only = _make_concept("course:a-only", "A Detail", "a detail", 0.7)
+    b_only = _make_concept("course:b-only", "B Detail", "b detail", 0.6)
+    course_graph = GraphArtifact(
+        session_id=uuid.uuid4(),
+        concepts=[core_a, core_b, shared, a_only, b_only],
+        edges=[],
+        course_meta=CourseGraphMeta(
+            core_concept_ids=[core_a.concept_id, core_b.concept_id],
+            source_session_ids=[],
+        ),
+    )
+
+    source_a = _make_concept("source:a", "Core A", "core a", 1.0)
+    source_b = _make_concept("source:b", "Core B", "core b", 0.9)
+    source_shared = _make_concept("source:shared", "Shared Detail", "shared detail", 0.95)
+    source_a_only = _make_concept("source:a-only", "A Detail", "a detail", 0.7)
+    source_b_only = _make_concept("source:b-only", "B Detail", "b detail", 0.6)
+    source_graph = GraphArtifact(
+        session_id=uuid.uuid4(),
+        concepts=[source_a, source_b, source_shared, source_a_only, source_b_only],
+        edges=[
+            _make_edge(source_a.concept_id, source_shared.concept_id),
+            _make_edge(source_a.concept_id, source_a_only.concept_id),
+            _make_edge(source_b.concept_id, source_shared.concept_id),
+            _make_edge(source_b.concept_id, source_b_only.concept_id),
+        ],
+    )
+
+    topic_graphs = _build_course_topic_graphs(course_graph, [source_graph])
+
+    assert len(topic_graphs) == 2
+    first_names = {concept.name for concept in topic_graphs[0].concepts}
+    second_names = {concept.name for concept in topic_graphs[1].concepts}
+    assert "Shared Detail" in first_names
+    assert "Shared Detail" not in second_names
+    assert "B Detail" in second_names
+
+
+def test_course_section_prompt_marks_order_and_previous_coverage():
+    core = _make_concept("course:a", "Core A", "core a", 1.0)
+    detail = _make_concept("course:d", "Detail", "detail", 0.8)
+    topic_graph = GraphArtifact(
+        session_id=uuid.uuid4(),
+        concepts=[core, detail],
+        edges=[_make_edge(core.concept_id, detail.concept_id)],
+    )
+
+    prompt = _build_course_section_prompt(
+        topic_graph,
+        lecture_title="Demo Course",
+        topic="",
+        core_concept=core,
+        section_index=2,
+        total_sections=4,
+        covered_concepts=["Already Covered"],
+    )
+
+    assert "section_index=2/4" in prompt
+    assert "already_covered_concepts=Already Covered" in prompt
+    assert "本节定位" in prompt
+    assert "不要再次写定义" in prompt
 
 
 def test_generate_exam_requires_independent_exam_llm_config(tmp_storage, monkeypatch):
@@ -863,6 +942,27 @@ def _make_source(kind: SourceKind, filename: str) -> SourceFile:
         storage_path=f"/tmp/{filename}",
         size_bytes=1,
         ingested=True,
+    )
+
+
+def _make_concept(concept_id: str, name: str, canonical_name: str, importance_score: float) -> ConceptNode:
+    return ConceptNode(
+        concept_id=concept_id,
+        name=name,
+        canonical_name=canonical_name,
+        definition=f"{name} definition.",
+        summary=f"{name} summary.",
+        key_points=[f"{name} key point"],
+        importance_score=importance_score,
+    )
+
+
+def _make_edge(source: str, target: str) -> GraphEdge:
+    return GraphEdge(
+        source=source,
+        target=target,
+        edge_type=EdgeType.relates_to,
+        properties={"relation_type": "used_for", "confidence": 0.9},
     )
 
 

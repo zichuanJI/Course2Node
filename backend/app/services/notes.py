@@ -7,7 +7,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.core.types import GenerateNotesRequest, GraphArtifact, NoteDocument, NoteSection, SessionStatus
+from app.core.types import ConceptNode, GenerateNotesRequest, GraphArtifact, GraphEdge, NoteDocument, NoteSection, SessionStatus
 from app.providers.llm.openai_compatible import OpenAICompatibleLLMProvider
 from app.services.text_utils import normalize_text
 from app.storage.local import load_graph_artifact, load_note, load_session, save_note, save_session
@@ -58,6 +58,30 @@ NOTE_STYLE_RULES = """\
 - 不要出现“根据图谱”“根据资料来源”等元说明，直接写成课堂笔记。
 """
 
+COURSE_SECTION_SYSTEM_PROMPT = """\
+你是课程总笔记分章生成器。你会读取围绕某个“核心概念”及其“关联扩充节点”的局部图谱数据，并专门为这个核心主题生成结构化的一节详细笔记。
+
+要求：
+- 请围绕提供的核心主题和关联节点详细展开，把各个概念的定义、公式、相互关系交代清楚。
+- 不要写总复习或整体总结，专注于写透这一个主题。
+- 严格控制本节边界：已经在前文讲过的概念只做短承接，不要重复定义、重复公式或重复长段解释。
+- 正文结构要清晰，像课程讲义的一节，而不是概念清单；优先组织为“本节定位 -> 核心概念 -> 关系展开 -> 易混点或应用 -> 小结”。
+- content_md 必须使用 Markdown，保留正确的换行，公式使用块级 KaTeX ($$ ... $$)。
+- 不要输出引用、页码、来源、证据、chunk_id。
+- 只返回 JSON object，格式为：
+{"title":"章节标题","content_md":"Markdown正文","concept_ids":["concept:id1", "concept:id2"]}
+"""
+
+COURSE_SUMMARY_SYSTEM_PROMPT = """\
+你是课程总笔记导读生成器。你会读取课程标题和已生成的章节标题，为整本课程总笔记生成一段轻量级导读。
+
+要求：
+- 只写整份笔记的阅读导引，说明课程主线、章节之间的递进关系和建议阅读顺序。
+- 不要重复输出章节正文，不要编造章节标题之外的新知识点。
+- 只返回 JSON object，格式为：
+{"summary":"导读正文"}
+"""
+
 
 class LLMNoteSection(BaseModel):
     title: str
@@ -71,35 +95,21 @@ class LLMNoteDocument(BaseModel):
     sections: list[LLMNoteSection] = Field(default_factory=list)
 
 
+class LLMCourseSummary(BaseModel):
+    summary: str = ""
+
+
 def generate_notes(request: GenerateNotesRequest) -> NoteDocument:
     graph = load_graph_artifact(request.session_id)
     session = load_session(request.session_id)
     if not graph.concepts:
         raise ValueError("No concepts available to generate notes.")
 
-    llm_note = _generate_note_with_llm(graph, lecture_title=session.lecture_title, topic=request.topic)
-    valid_concept_ids = {concept.concept_id for concept in graph.concepts}
-    sections = [
-        NoteSection(
-            title=normalize_text(section.title) or "学习笔记",
-            content_md=_clean_section_markdown(section.title, section.content_md) or "- 暂无内容。",
-            concept_ids=[concept_id for concept_id in section.concept_ids if concept_id in valid_concept_ids],
-            references=[],
-        )
-        for section in llm_note.sections
-        if normalize_text(section.title) or _normalize_note_markdown(section.content_md)
-    ]
-    if not sections:
-        raise ValueError("Notes LLM returned no usable sections.")
+    if graph.course_meta:
+        note = _generate_course_notes(request, graph, lecture_title=session.lecture_title)
+    else:
+        note = _generate_single_graph_notes(request, graph, lecture_title=session.lecture_title)
 
-    topic = normalize_text(request.topic) or "当前知识图谱"
-    note = NoteDocument(
-        session_id=request.session_id,
-        title=normalize_text(llm_note.title) or f"{session.lecture_title} - 图谱笔记",
-        topic=topic,
-        summary=normalize_text(llm_note.summary) or f"基于当前图数据库整理出 {len(sections)} 个主题段落。",
-        sections=sections,
-    )
     save_note(note)
     session.status = SessionStatus.notes_ready
     session.updated_at = datetime.utcnow()
@@ -110,6 +120,359 @@ def generate_notes(request: GenerateNotesRequest) -> NoteDocument:
 
 def get_note(session_id: uuid.UUID) -> NoteDocument:
     return load_note(session_id)
+
+
+def _generate_single_graph_notes(request: GenerateNotesRequest, graph: GraphArtifact, *, lecture_title: str) -> NoteDocument:
+    llm_note = _generate_note_with_llm(graph, lecture_title=lecture_title, topic=request.topic)
+    sections = _coerce_note_sections(llm_note.sections, valid_concept_ids={concept.concept_id for concept in graph.concepts})
+    if not sections:
+        raise ValueError("Notes LLM returned no usable sections.")
+
+    topic = normalize_text(request.topic) or "当前知识图谱"
+    return NoteDocument(
+        session_id=request.session_id,
+        title=normalize_text(llm_note.title) or f"{lecture_title} - 图谱笔记",
+        topic=topic,
+        summary=normalize_text(llm_note.summary) or f"基于当前图数据库整理出 {len(sections)} 个主题段落。",
+        sections=sections,
+    )
+
+
+def _generate_course_notes(request: GenerateNotesRequest, graph: GraphArtifact, *, lecture_title: str) -> NoteDocument:
+    course_meta = graph.course_meta
+    if course_meta is None:
+        raise ValueError("Course graph metadata is missing.")
+    if not course_meta.core_concept_ids:
+        raise ValueError("Course graph has no core concepts for note generation.")
+
+    source_graphs = _load_source_graphs(course_meta.source_session_ids)
+    topic_graphs = _build_course_topic_graphs(graph, source_graphs)
+    if not topic_graphs:
+        raise ValueError("Course graph produced no usable core-topic subgraphs.")
+
+    llm_sections: list[LLMNoteSection] = []
+    covered_concepts: list[str] = []
+    total_sections = len(topic_graphs)
+    for index, topic_graph in enumerate(topic_graphs, start=1):
+        core = topic_graph.concepts[0]
+        llm_sections.append(
+            _generate_course_section_with_llm(
+                topic_graph,
+                lecture_title=lecture_title,
+                topic=request.topic,
+                core_concept=core,
+                section_index=index,
+                total_sections=total_sections,
+                covered_concepts=covered_concepts,
+            )
+        )
+        covered_concepts.extend(concept.name for concept in topic_graph.concepts)
+
+    topic_valid_ids = {concept.concept_id for topic_graph in topic_graphs for concept in topic_graph.concepts}
+    sections = _number_course_sections(_coerce_note_sections(llm_sections, valid_concept_ids=topic_valid_ids))
+    if not sections:
+        raise ValueError("Course notes LLM returned no usable sections.")
+
+    section_titles = [section.title for section in sections]
+    summary = _generate_course_summary_with_llm(
+        graph,
+        lecture_title=lecture_title,
+        section_titles=section_titles,
+        topic=request.topic,
+    )
+
+    topic = normalize_text(request.topic) or "课程总图谱"
+    return NoteDocument(
+        session_id=request.session_id,
+        title=f"{lecture_title} - 课程总笔记",
+        topic=topic,
+        summary=normalize_text(summary) or _fallback_course_summary(section_titles),
+        sections=sections,
+    )
+
+
+def _coerce_note_sections(llm_sections: list[LLMNoteSection], *, valid_concept_ids: set[str]) -> list[NoteSection]:
+    sections: list[NoteSection] = []
+    for section in llm_sections:
+        if not normalize_text(section.title) and not _normalize_note_markdown(section.content_md):
+            continue
+        concept_ids = []
+        seen_concept_ids: set[str] = set()
+        for concept_id in section.concept_ids:
+            if concept_id not in valid_concept_ids or concept_id in seen_concept_ids:
+                continue
+            concept_ids.append(concept_id)
+            seen_concept_ids.add(concept_id)
+        sections.append(
+            NoteSection(
+                title=normalize_text(section.title) or "学习笔记",
+                content_md=_clean_section_markdown(section.title, section.content_md) or "- 暂无内容。",
+                concept_ids=concept_ids,
+                references=[],
+            )
+        )
+    return sections
+
+
+def _number_course_sections(sections: list[NoteSection]) -> list[NoteSection]:
+    numbered: list[NoteSection] = []
+    seen_titles: set[str] = set()
+    for index, section in enumerate(sections, start=1):
+        title = _strip_section_number(normalize_text(section.title)) or "核心主题"
+        title_key = _heading_key(title)
+        if title_key in seen_titles:
+            title = f"{title}（{index}）"
+        seen_titles.add(_heading_key(title))
+        numbered.append(section.model_copy(update={"title": f"第 {index} 节：{title}"}))
+    return numbered
+
+
+def _strip_section_number(title: str) -> str:
+    return re.sub(r"^第\s*\d+\s*[章节节讲课][：:、.\s-]*", "", title).strip()
+
+
+def _load_source_graphs(source_session_ids: list[str]) -> list[GraphArtifact]:
+    graphs: list[GraphArtifact] = []
+    for session_id in source_session_ids:
+        try:
+            graphs.append(load_graph_artifact(uuid.UUID(session_id)))
+        except (FileNotFoundError, ValueError):
+            continue
+    return graphs
+
+
+def _build_course_topic_graphs(course_graph: GraphArtifact, source_graphs: list[GraphArtifact]) -> list[GraphArtifact]:
+    course_meta = course_graph.course_meta
+    if course_meta is None:
+        return []
+
+    course_by_id = {concept.concept_id: concept for concept in course_graph.concepts}
+    course_by_key = _concept_lookup(course_graph.concepts)
+    all_core_keys_by_id = {
+        core_id: _concept_identity_keys(course_by_id[core_id])
+        for core_id in course_meta.core_concept_ids
+        if core_id in course_by_id
+    }
+
+    topic_graphs: list[GraphArtifact] = []
+    seen_core_keys: set[str] = set()
+    assigned_expansion_keys: set[str] = set()
+    for core_id in course_meta.core_concept_ids:
+        core = course_by_id.get(core_id)
+        if core is None:
+            continue
+        core_key = _primary_concept_key(core)
+        if core_key in seen_core_keys:
+            continue
+        seen_core_keys.add(core_key)
+
+        excluded_core_keys = set().union(
+            *(keys for candidate_id, keys in all_core_keys_by_id.items() if candidate_id != core_id)
+        ) if all_core_keys_by_id else set()
+        topic_graph = _build_enriched_topic_graph(
+            course_graph,
+            source_graphs,
+            core,
+            course_by_key=course_by_key,
+            excluded_core_keys=excluded_core_keys,
+            excluded_expansion_keys=assigned_expansion_keys,
+        )
+        if len(topic_graph.concepts) == 1:
+            topic_graph = _build_fallback_topic_graph(
+                course_graph,
+                core,
+                excluded_core_keys=excluded_core_keys,
+                excluded_expansion_keys=assigned_expansion_keys,
+            )
+        topic_graphs.append(topic_graph)
+        assigned_expansion_keys.update(_primary_concept_key(concept) for concept in topic_graph.concepts[1:])
+        assigned_expansion_keys.discard("")
+
+    return topic_graphs
+
+
+def _build_enriched_topic_graph(
+    course_graph: GraphArtifact,
+    source_graphs: list[GraphArtifact],
+    core: ConceptNode,
+    *,
+    course_by_key: dict[str, ConceptNode],
+    excluded_core_keys: set[str],
+    excluded_expansion_keys: set[str],
+) -> GraphArtifact:
+    core_keys = _concept_identity_keys(core)
+    expansion_by_key: dict[str, ConceptNode] = {}
+    edge_pool: list[GraphEdge] = []
+
+    for source_graph in source_graphs:
+        source_by_id = {concept.concept_id: concept for concept in source_graph.concepts}
+        matching_core_ids = {
+            concept.concept_id
+            for concept in source_graph.concepts
+            if core_keys & _concept_identity_keys(concept)
+        }
+        if not matching_core_ids:
+            continue
+
+        for edge in source_graph.edges:
+            if edge.source not in source_by_id or edge.target not in source_by_id:
+                continue
+            edge_pool.append(edge)
+            neighbor_id = ""
+            if edge.source in matching_core_ids:
+                neighbor_id = edge.target
+            elif edge.target in matching_core_ids:
+                neighbor_id = edge.source
+            if not neighbor_id:
+                continue
+
+            neighbor = source_by_id[neighbor_id]
+            neighbor_keys = _concept_identity_keys(neighbor)
+            if neighbor_keys & core_keys or neighbor_keys & excluded_core_keys:
+                continue
+            key = _primary_concept_key(neighbor)
+            if not key or key in excluded_expansion_keys:
+                continue
+            existing = expansion_by_key.get(key)
+            if existing is None or neighbor.importance_score > existing.importance_score:
+                expansion_by_key[key] = _map_to_course_concept(neighbor, course_by_key)
+
+    expansions = sorted(expansion_by_key.values(), key=lambda concept: concept.importance_score, reverse=True)[:15]
+    return _compose_topic_graph(course_graph, core, expansions, source_graphs, edge_pool)
+
+
+def _build_fallback_topic_graph(
+    course_graph: GraphArtifact,
+    core: ConceptNode,
+    *,
+    excluded_core_keys: set[str],
+    excluded_expansion_keys: set[str],
+) -> GraphArtifact:
+    concept_by_id = {concept.concept_id: concept for concept in course_graph.concepts}
+    core_keys = _concept_identity_keys(core)
+    neighbor_ids: set[str] = set()
+    for edge in course_graph.edges:
+        if edge.source == core.concept_id:
+            neighbor_ids.add(edge.target)
+        elif edge.target == core.concept_id:
+            neighbor_ids.add(edge.source)
+
+    expansions = []
+    for neighbor_id in neighbor_ids:
+        neighbor = concept_by_id.get(neighbor_id)
+        if neighbor is None:
+            continue
+        neighbor_keys = _concept_identity_keys(neighbor)
+        neighbor_key = _primary_concept_key(neighbor)
+        if neighbor_keys & core_keys or neighbor_keys & excluded_core_keys or neighbor_key in excluded_expansion_keys:
+            continue
+        expansions.append(neighbor)
+    expansions.sort(key=lambda concept: concept.importance_score, reverse=True)
+    return _compose_topic_graph(course_graph, core, expansions[:15], [course_graph], list(course_graph.edges))
+
+
+def _compose_topic_graph(
+    course_graph: GraphArtifact,
+    core: ConceptNode,
+    expansions: list[ConceptNode],
+    source_graphs: list[GraphArtifact],
+    edge_pool: list[GraphEdge],
+) -> GraphArtifact:
+    selected = [core, *expansions]
+    selected_keys = {_primary_concept_key(concept) for concept in selected}
+    selected_keys.discard("")
+    selected_ids = {concept.concept_id for concept in selected}
+    id_to_selected_id = _selected_id_lookup(selected, source_graphs, selected_keys)
+
+    edges: list[GraphEdge] = []
+    seen_edges: set[tuple[str, str, str, str]] = set()
+    for edge in edge_pool:
+        mapped_source = id_to_selected_id.get(edge.source)
+        mapped_target = id_to_selected_id.get(edge.target)
+        if mapped_source is None or mapped_target is None or mapped_source == mapped_target:
+            continue
+        if mapped_source not in selected_ids or mapped_target not in selected_ids:
+            continue
+        relation = str(edge.properties.get("relation_type") or "")
+        edge_type = edge.edge_type.value if hasattr(edge.edge_type, "value") else str(edge.edge_type)
+        key = (mapped_source, mapped_target, edge_type, relation)
+        if key in seen_edges:
+            continue
+        seen_edges.add(key)
+        edges.append(edge.model_copy(update={"source": mapped_source, "target": mapped_target}))
+
+    return GraphArtifact(
+        session_id=course_graph.session_id,
+        concepts=selected,
+        topic_clusters=[],
+        edges=edges,
+        course_meta=None,
+    )
+
+
+def _selected_id_lookup(
+    selected: list[ConceptNode],
+    source_graphs: list[GraphArtifact],
+    selected_keys: set[str],
+) -> dict[str, str]:
+    selected_by_key = {_primary_concept_key(concept): concept.concept_id for concept in selected}
+    lookup = {concept.concept_id: concept.concept_id for concept in selected}
+    for source_graph in source_graphs:
+        for concept in source_graph.concepts:
+            key = _primary_concept_key(concept)
+            if key in selected_keys and key in selected_by_key:
+                lookup[concept.concept_id] = selected_by_key[key]
+    return lookup
+
+
+def _concept_lookup(concepts: list[ConceptNode]) -> dict[str, ConceptNode]:
+    lookup: dict[str, ConceptNode] = {}
+    for concept in concepts:
+        for key in _concept_identity_keys(concept):
+            lookup.setdefault(key, concept)
+    return lookup
+
+
+def _map_to_course_concept(concept: ConceptNode, course_by_key: dict[str, ConceptNode]) -> ConceptNode:
+    for key in _concept_identity_keys(concept):
+        course_concept = course_by_key.get(key)
+        if course_concept is not None:
+            return concept.model_copy(update={"concept_id": course_concept.concept_id})
+    return concept
+
+
+def _concept_identity_keys(concept: ConceptNode) -> set[str]:
+    values = [concept.concept_id, concept.name, concept.canonical_name, *concept.aliases]
+    return {_normalize_concept_key(value) for value in values if _normalize_concept_key(value)}
+
+
+def _primary_concept_key(concept: ConceptNode) -> str:
+    return _normalize_concept_key(concept.canonical_name) or _normalize_concept_key(concept.name) or concept.concept_id
+
+
+def _normalize_concept_key(value: str) -> str:
+    return re.sub(r"[^\w\u4e00-\u9fff]+", "", normalize_text(value)).lower()
+
+
+def _fallback_course_summary(section_titles: list[str]) -> str:
+    if not section_titles:
+        return "这份课程总笔记按核心概念组织章节，适合先把握主线，再逐节深入复习。"
+    return "这份课程总笔记围绕核心概念展开，建议按章节顺序阅读：" + "、".join(section_titles) + "。"
+
+
+def _format_covered_concepts(concepts: list[str], *, limit: int = 24) -> str:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for concept in concepts:
+        name = normalize_text(concept)
+        key = _normalize_concept_key(name)
+        if not name or key in seen:
+            continue
+        unique.append(name)
+        seen.add(key)
+        if len(unique) >= limit:
+            break
+    return "、".join(unique) if unique else "无"
 
 
 def _normalize_note_markdown(text: str) -> str:
@@ -205,16 +568,7 @@ def _contains_cjk(text: str) -> bool:
 
 
 def _generate_note_with_llm(graph: GraphArtifact, *, lecture_title: str, topic: str = "") -> LLMNoteDocument:
-    if not settings.graph_llm_api_key or not settings.graph_llm_model:
-        raise RuntimeError("Notes LLM is not configured. Set GRAPH_LLM_API_KEY and GRAPH_LLM_MODEL.")
-
-    provider = OpenAICompatibleLLMProvider(
-        api_key=settings.graph_llm_api_key,
-        base_url=settings.graph_llm_base_url,
-        model=settings.graph_llm_model,
-        timeout_seconds=max(settings.graph_llm_timeout_seconds, NOTES_MIN_TIMEOUT_SECONDS),
-        max_output_tokens=max(settings.graph_llm_max_output_tokens, NOTES_MIN_OUTPUT_TOKENS),
-    )
+    provider = _make_notes_provider()
     payload = provider.generate_json(
         prompt=_build_notes_prompt(graph, lecture_title=lecture_title, topic=topic),
         system=NOTES_SYSTEM_PROMPT,
@@ -222,6 +576,187 @@ def _generate_note_with_llm(graph: GraphArtifact, *, lecture_title: str, topic: 
         max_output_tokens=max(settings.graph_llm_max_output_tokens, NOTES_MIN_OUTPUT_TOKENS),
     )
     return LLMNoteDocument.model_validate(payload)
+
+
+def _generate_course_section_with_llm(
+    topic_graph: GraphArtifact,
+    *,
+    lecture_title: str,
+    topic: str,
+    core_concept: ConceptNode,
+    section_index: int,
+    total_sections: int,
+    covered_concepts: list[str],
+) -> LLMNoteSection:
+    provider = _make_notes_provider()
+    payload = provider.generate_json(
+        prompt=_build_course_section_prompt(
+            topic_graph,
+            lecture_title=lecture_title,
+            topic=topic,
+            core_concept=core_concept,
+            section_index=section_index,
+            total_sections=total_sections,
+            covered_concepts=covered_concepts,
+        ),
+        system=COURSE_SECTION_SYSTEM_PROMPT,
+        temperature=0.2,
+        max_output_tokens=max(settings.graph_llm_max_output_tokens, NOTES_MIN_OUTPUT_TOKENS),
+    )
+    return LLMNoteSection.model_validate(payload)
+
+
+def _generate_course_summary_with_llm(
+    graph: GraphArtifact,
+    *,
+    lecture_title: str,
+    section_titles: list[str],
+    topic: str,
+) -> str:
+    provider = _make_notes_provider(max_output_tokens=1200)
+    payload = provider.generate_json(
+        prompt=_build_course_summary_prompt(
+            graph,
+            lecture_title=lecture_title,
+            section_titles=section_titles,
+            topic=topic,
+        ),
+        system=COURSE_SUMMARY_SYSTEM_PROMPT,
+        temperature=0.2,
+        max_output_tokens=1200,
+    )
+    return LLMCourseSummary.model_validate(payload).summary
+
+
+def _make_notes_provider(*, max_output_tokens: int | None = None) -> OpenAICompatibleLLMProvider:
+    if not settings.graph_llm_api_key or not settings.graph_llm_model:
+        raise RuntimeError("Notes LLM is not configured. Set GRAPH_LLM_API_KEY and GRAPH_LLM_MODEL.")
+
+    return OpenAICompatibleLLMProvider(
+        api_key=settings.graph_llm_api_key,
+        base_url=settings.graph_llm_base_url,
+        model=settings.graph_llm_model,
+        timeout_seconds=max(settings.graph_llm_timeout_seconds, NOTES_MIN_TIMEOUT_SECONDS),
+        max_output_tokens=max_output_tokens or max(settings.graph_llm_max_output_tokens, NOTES_MIN_OUTPUT_TOKENS),
+    )
+
+
+def _build_course_section_prompt(
+    topic_graph: GraphArtifact,
+    *,
+    lecture_title: str,
+    topic: str,
+    core_concept: ConceptNode,
+    section_index: int,
+    total_sections: int,
+    covered_concepts: list[str],
+) -> str:
+    concept_by_id = {concept.concept_id: concept for concept in topic_graph.concepts}
+    lines = [
+        f"课程总图谱：{lecture_title}",
+        f"用户主题偏好：{normalize_text(topic) or '无，按课程总图谱生成'}",
+        f"章节位置：第 {section_index} 节 / 共 {total_sections} 节",
+        f"section_index={section_index}/{total_sections}",
+        f"本节核心概念：{core_concept.name}",
+        f"前文已重点讲过的概念：{_format_covered_concepts(covered_concepts)}",
+        f"already_covered_concepts={_format_covered_concepts(covered_concepts)}",
+        "",
+        NOTE_STYLE_RULES.strip(),
+        "",
+        "输出结构：",
+        '{"title":"","content_md":"","concept_ids":["concept:id"]}',
+        "",
+        "局部强化图谱：",
+        "这一组数据由 1 个核心节点 + 最多 15 个直接关联扩充节点组成，来自原始 PDF 子图谱的关联扩充知识库。",
+        "",
+        "节点：",
+    ]
+    for index, concept in enumerate(topic_graph.concepts):
+        role = "core" if index == 0 else "neighbor"
+        parts = [
+            f"role={role}",
+            f"id={concept.concept_id}",
+            f"name={concept.name}",
+            f"canonical={concept.canonical_name}",
+            f"importance_score={concept.importance_score:.4f}",
+        ]
+        if concept.graph_metrics:
+            parts.append(
+                "graph_metrics="
+                + "；".join(f"{key}={value:.4f}" for key, value in sorted(concept.graph_metrics.items()))
+            )
+        if concept.definition:
+            parts.append(f"definition={concept.definition[:260]}")
+        if concept.summary:
+            parts.append(f"summary={concept.summary[:320]}")
+        if concept.key_points:
+            parts.append(f"key_points={'；'.join(concept.key_points[:6])}")
+        if concept.prerequisites:
+            parts.append(f"prerequisites={'；'.join(concept.prerequisites[:6])}")
+        if concept.applications:
+            parts.append(f"applications={'；'.join(concept.applications[:6])}")
+        lines.append("- " + " | ".join(parts))
+
+    lines.extend(["", "关系边："])
+    for edge in topic_graph.edges:
+        source = concept_by_id.get(edge.source)
+        target = concept_by_id.get(edge.target)
+        if source is None or target is None:
+            continue
+        relation_type = edge.properties.get("relation_type") or edge.edge_type
+        lines.append(f"- {source.name} -> {target.name} ({relation_type})")
+    if not topic_graph.edges:
+        lines.append("- 无显式关系边时，请根据节点定义和 key_points 组织本节，但不要编造图谱外知识。")
+
+    lines.extend(
+        [
+            "",
+            "生成要求：",
+            f"- title 必须是“第 {section_index} 节：...”风格的主题标题，聚焦本节核心概念，不要使用泛泛的“课程总结/综合复习/核心概念”。",
+            "- 只生成这一节，不要生成整本课程总览、导读或结语。",
+            "- 正文请按清晰讲义结构组织，优先使用这些二级小标题：本节定位、核心概念、关系展开、易混点或应用、小结。",
+            "- 本节只详细展开上面“节点”列表中的概念；前文已重点讲过的概念如果必须出现，只用一句话承接，不要再次写定义、公式或长段解释。",
+            "- 内容要围绕核心概念展开，并把关联节点写成解释、对比、前置关系、组成关系或应用位置，避免把同一批概念反复列成相同段落。",
+            "- concept_ids 必须使用上面给出的 id；至少包含核心概念 id，且不要重复。",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _build_course_summary_prompt(
+    graph: GraphArtifact,
+    *,
+    lecture_title: str,
+    section_titles: list[str],
+    topic: str,
+) -> str:
+    core_names = []
+    concept_by_id = {concept.concept_id: concept for concept in graph.concepts}
+    if graph.course_meta:
+        core_names = [
+            concept_by_id[concept_id].name
+            for concept_id in graph.course_meta.core_concept_ids
+            if concept_id in concept_by_id
+        ]
+
+    lines = [
+        f"课程：{lecture_title}",
+        f"用户主题偏好：{normalize_text(topic) or '无'}",
+        "",
+        "核心概念：",
+    ]
+    lines.extend(f"- {name}" for name in core_names)
+    lines.extend(["", "已经生成的章节标题："])
+    lines.extend(f"{index}. {title}" for index, title in enumerate(section_titles, start=1))
+    lines.extend(
+        [
+            "",
+            "请生成整本课程总笔记的导读 summary，1-2 段即可，重点说明阅读顺序和章节主线。",
+            "只返回 JSON：",
+            '{"summary":""}',
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _build_notes_prompt(graph: GraphArtifact, *, lecture_title: str, topic: str = "") -> str:
