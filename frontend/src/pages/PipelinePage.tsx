@@ -258,10 +258,14 @@ export function PipelinePage() {
   const polledStatus = (statusData?.status ??
     session?.status ??
     "uploaded") as SessionStatus;
-  const currentStatus =
-    localStatus && (polledStatus === "uploaded" || polledStatus === "ingesting")
-      ? localStatus
-      : polledStatus;
+  const currentStatus = (() => {
+    // localStatus reflects the latest action from the run() function;
+    // prefer it when it's more "advanced" than the polled status.
+    if (localStatus === "graph_ready" || localStatus === "notes_ready") return localStatus;
+    if (polledStatus === "graph_ready" || polledStatus === "notes_ready") return polledStatus;
+    if (localStatus) return localStatus;
+    return polledStatus;
+  })() as SessionStatus;
   const phase = statusToPhase(currentStatus, stats?.chunk_count ?? 0);
   const progress = Math.min(100, tick % 100);
 
@@ -290,6 +294,17 @@ export function PipelinePage() {
     async function run() {
       const sess = (await getSession(id!)) as CourseSession;
       setSession(sess);
+
+      // Already built → skip pipeline, let auto-navigate handle it
+      if (sess.status === "graph_ready" || sess.status === "notes_ready") {
+        setLocalStatus(sess.status as SessionStatus);
+        return;
+      }
+
+      // For any other status (uploaded, ingesting, building_graph, failed),
+      // re-run the full pipeline. This handles "zombie" sessions that got
+      // stuck when the backend was restarted mid-pipeline.
+
       const pdfs = sess.source_files.filter(
         (f) => f.kind === "pdf" && !f.ingested,
       );

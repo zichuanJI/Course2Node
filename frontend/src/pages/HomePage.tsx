@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
-import { deleteSession, getCourseSession, getRuntimeSettings, listSessions, updateRuntimeSettings } from "../api/client";
+import { buildCourseGraph, deleteSession, getCourseSession, getRuntimeSettings, listSessions, updateRuntimeSettings } from "../api/client";
 import type { CourseSession, RuntimeSettingField, RuntimeSettingsResponse, SessionStatus } from "../types";
 import { useToast } from "../components/primitives/Toast";
 import "./HomePage.css";
@@ -296,6 +296,22 @@ function CourseGraphButtons({ course, sessions }: { course: string; sessions: Co
     }
   }
 
+  async function handleRebuildClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (loading) return;
+    setLoading(true);
+    try {
+      const result = await buildCourseGraph({ course_title: course });
+      setCourseSessionId(result.session_id);
+      setCourseSessionStatus("graph_ready");
+      toast(`总图谱已重新生成：${result.concept_count} 概念，${result.edge_count} 关系`, "success");
+    } catch (err) {
+      toast(`重新生成失败：${err instanceof Error ? err.message : String(err)}`, "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function handleNotesClick(e: React.MouseEvent) {
     e.stopPropagation();
     if (!courseGraphReady || !courseSessionId) {
@@ -325,6 +341,25 @@ function CourseGraphButtons({ course, sessions }: { course: string; sessions: Co
           <path d="m7 7 3 3m4 0 3-3m0 10-3-3m-4 0-3 3" />
         </svg>
       </button>
+      {courseGraphReady && (
+        <button
+          className="btn btn-icon course-action-btn"
+          onClick={handleRebuildClick}
+          disabled={loading}
+          title={loading ? "重新生成中…" : "重新生成总图谱"}
+          type="button"
+        >
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={loading ? "spin-icon" : ""}
+          >
+            <polyline points="23 4 23 10 17 10" />
+            <polyline points="1 20 1 14 7 14" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+        </button>
+      )}
       <button
         className={clsx("btn btn-icon course-action-btn", {
           "course-action-btn-ready": courseGraphReady,

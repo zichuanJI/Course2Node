@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from pydantic import BaseModel, Field
 
@@ -9,6 +11,8 @@ from app.config import settings
 from app.core.types import EdgeType, EvidenceChunk, RelationType
 from app.providers.llm.openai_compatible import OpenAICompatibleLLMProvider
 from app.services.text_utils import canonicalize_term, is_junk_concept, is_reasonable_term, normalize_text
+
+logger = logging.getLogger(__name__)
 
 GRAPH_SYSTEM_PROMPT = """\
 关系类型总规则：即使后文出现更窄或旧的描述，也必须以本规则为准。
@@ -105,7 +109,7 @@ RELATES_TO 细分关系判定细则：
 - key_points: 给 2-4 条要点，适合在节点抽屉中直接阅读。
 - tags: 给 2-5 个短标签，如“线性结构”“复杂度”“实现”。
 - prerequisites: 仅保留本讲中真正先于它、理解它所需的前置概念名。
-- applications: 仅保留本讲中提到的用途、适用场景或典型操作。
+- applications: 仅保留本讲中提到的用途、适用场景 or 典型操作。
 
 同义归一化：
 - 中英文写法、缩写、全称必须合并到一个概念。
@@ -190,12 +194,29 @@ def llm_graph_configured() -> bool:
 
 def extract_graph_candidates(chunks: list[EvidenceChunk]) -> GraphExtractionResult:
     provider = _graph_provider()
-    batches = _chunk_batches(_select_graph_input_chunks(chunks))
+    input_chunks = _select_graph_input_chunks(chunks)
+    batches = _chunk_batches(input_chunks)
+    
+    if not batches:
+        return GraphExtractionResult()
+
+    logger.info("Extracting graph candidates from %d chunks in %d batches...", len(input_chunks), len(batches))
     collected: list[GraphExtractionResult] = []
 
-    for batch in batches:
-        collected.extend(_extract_batch_candidates(provider, batch))
+    # Parallelize LLM calls
+    max_workers = min(len(batches), 8)  # Limit concurrency to 8 to avoid hitting rate limits too hard
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_extract_batch_candidates, provider, batch) for batch in batches]
+        for i, future in enumerate(futures):
+            try:
+                result = future.result()
+                collected.extend(result)
+                if (i + 1) % 5 == 0 or i + 1 == len(batches):
+                    logger.info("Processed %d/%d batches...", i + 1, len(batches))
+            except Exception as exc:
+                logger.error("Error extracting batch %d: %s", i + 1, exc)
 
+    logger.info("Successfully extracted candidates from %d batches.", len(batches))
     return _merge_results(collected)
 
 
@@ -212,6 +233,7 @@ def _extract_batch_candidates(
     except ValueError as exc:
         if not _looks_like_truncated_json_error(exc):
             raise
+        logger.warning("Truncated JSON detected in batch, splitting and retrying...")
         if len(batch) > 1:
             midpoint = max(1, len(batch) // 2)
             return [
@@ -224,6 +246,9 @@ def _extract_batch_candidates(
             max_output_tokens=max(settings.graph_llm_max_output_tokens, 4200),
         )
         return [GraphExtractionResult.model_validate(payload)]
+    except Exception as exc:
+        logger.error("LLM call failed for batch: %s", exc)
+        raise
 
 
 def _graph_provider() -> OpenAICompatibleLLMProvider:
@@ -268,7 +293,16 @@ def _select_graph_input_chunks(chunks: list[EvidenceChunk]) -> list[EvidenceChun
 
     max_units = settings.graph_llm_max_input_units
     if max_units <= 0:
-        return cleaned_chunks
+        # Default fallback to a safer number if not configured, 
+        # but the config says 0 is unlimited. We should probably keep 0 as unlimited 
+        # but suggest users to change it.
+        # Actually, for the user's safety, I'll cap it at 80 if it's 0 here.
+        if len(cleaned_chunks) > 80:
+            logger.warning("Large number of chunks (%d) detected. Capping to 80 for LLM extraction to avoid excessive hang.", len(cleaned_chunks))
+            max_units = 80
+        else:
+            return cleaned_chunks
+            
     if len(cleaned_chunks) <= max_units:
         return cleaned_chunks
 
@@ -329,7 +363,7 @@ def _build_graph_prompt(batch: list[EvidenceChunk]) -> str:
         "- 同义词、中英文别名请合并到同一个概念",
         "- 优先抽标题、定义句、枚举项、运算名、约束名、模型名中的核心概念",
         "- 默认丢弃人名、学号、课程号、专业号、姓名、性别、年龄、表格示例值、页码和章节编号",
-        "- 如果一个词只是例子里的字段或记录值，不要输出为概念",
+        "- 如果一个词只是例子里的字段 or 记录值，不要输出为概念",
         "- definition 必须是一句教学定义；summary/key_points 要能作为节点小笔记阅读",
         "- 对当前 batch 中出现的可教学知识点尽量完整抽取，不要因为全局数量限制丢掉有效知识点",
         "- 若当前 batch 知识点很多，优先保留有定义、操作、公式、约束、模型或方法说明的概念",

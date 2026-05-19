@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     graph_llm_timeout_seconds: float = 60.0
     graph_llm_batch_max_chars: int = 5200
     graph_llm_batch_max_chunks: int = 8
-    graph_llm_max_input_units: int = 0
+    graph_llm_max_input_units: int = 64
     graph_llm_max_output_tokens: int = 6000
     graph_llm_strict: bool = True
     exam_llm_base_url: str = "https://api.deepseek.com"

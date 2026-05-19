@@ -4,6 +4,8 @@ from __future__ import annotations
 from app.config import settings
 from app.core.providers import EmbedProvider
 
+_MODEL_CACHE = {}
+
 
 class LocalBGEM3EmbedProvider(EmbedProvider):
     def __init__(
@@ -26,20 +28,24 @@ class LocalBGEM3EmbedProvider(EmbedProvider):
         self.use_fp16 = settings.embedding_local_use_fp16 if use_fp16 is None else use_fp16
         self._torch = torch
 
-        try:
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self._model = AutoModel.from_pretrained(self.model_name)
-        except Exception as exc:
-            raise RuntimeError(
-                "Failed to load local BGE-M3 model. "
-                "This usually means the local Hugging Face cache is incomplete or the current "
-                "`transformers` stack is incompatible with `BAAI/bge-m3`."
-            ) from exc
-
-        self._model.to(self.device)
-        self._model.eval()
-        if self.use_fp16 and str(self.device).startswith("cuda"):
-            self._model.half()
+        cache_key = (self.model_name, self.device, self.use_fp16)
+        if cache_key in _MODEL_CACHE:
+            self._tokenizer, self._model = _MODEL_CACHE[cache_key]
+        else:
+            try:
+                self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                self._model = AutoModel.from_pretrained(self.model_name)
+                self._model.to(self.device)
+                self._model.eval()
+                if self.use_fp16 and str(self.device).startswith("cuda"):
+                    self._model.half()
+                _MODEL_CACHE[cache_key] = (self._tokenizer, self._model)
+            except Exception as exc:
+                raise RuntimeError(
+                    "Failed to load local BGE-M3 model. "
+                    "This usually means the local Hugging Face cache is incomplete or the current "
+                    "`transformers` stack is incompatible with `BAAI/bge-m3`."
+                ) from exc
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
