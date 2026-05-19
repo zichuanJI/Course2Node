@@ -74,8 +74,7 @@ CONCEPT_STOPWORDS = {
     "property", "properties", "feature", "features",
     "rule", "rules", "pattern", "patterns",
     # Generic abbreviations that are not real concepts without context
-    "dba", "dbtg", "dbms", "db", "os", "io", "cpu", "ram",
-    "api", "url", "xml", "html", "css", "http",
+    "os", "io", "cpu", "ram", "api", "url", "xml", "html", "css", "http",
     # Chinese generic
     "数据", "例子", "例题", "样例", "学生", "老师", "教师",
     "图片", "图表", "表格", "章节", "习题", "作业",
@@ -83,12 +82,7 @@ CONCEPT_STOPWORDS = {
     "数据一", "数据二", "数据三",
     "基本概念", "四个基本概念",
     # Chinese example/instance data fragments
-    "人员", "人员一", "人员二", "人员三", "人员四", "人员五",
-    "工资", "工资表", "一个工资表", "一张表", "一个表",
-    "表中有表", "一张工资表",
-    "记录", "一条记录", "一个记录", "每条记录",
-    "字段", "一个字段", "每个字段",
-    "系统", "一个系统", "某系统",
+    "人员", "系统", "一个系统", "某系统",
     "文件", "一个文件", "某文件",
     "程序", "一个程序", "某程序",
     "操作", "一个操作", "某操作",
@@ -107,7 +101,6 @@ _JUNK_PATTERNS = [
     re.compile(r"^[a-z]{1,3}\d+$"),              # e.g. "a305", "ch01", "r__"
     re.compile(r"^[a-z]-\d+$"),                   # e.g. "a-305", "a-102"
     re.compile(r"^[a-z]\d*-\d+$"),                # e.g. "a-305", "b2-3"
-    re.compile(r"^dbch\d+$"),                      # e.g. "dbch01"
     re.compile(r"^ch\d+$"),                        # e.g. "ch01"
     re.compile(r"^\d+[a-z]*$"),                    # e.g. "112", "2a"
     re.compile(r"^frac\d+$"),                      # e.g. "frac112"
@@ -120,17 +113,14 @@ _JUNK_PATTERNS = [
     re.compile(r"^[\d.]+$"),                        # any pure digit/dot sequence
     re.compile(r"^[a-z]{1,4}\s+\d{1,4}$"),         # canonicalized "a 305", "cs 101" (hyphen→space)
     re.compile(r"^\d{1,4}\s+[a-z]{1,4}$"),         # canonicalized "305 a"
-    re.compile(r"^人员[一二三四五六七八九十\d]+$"),   # "人员三", "人员1"
     re.compile(r"^实例[一二三四五六七八九十\d]+$"),   # "实例一", "实例2"
     re.compile(r"^(一个|一张|某个?|每个?|这个|那个)"),  # phrases starting with demonstratives
 ]
 
 # Substrings that make a concept name look like example data or a fragment
 _JUNK_SUBSTRINGS = {
-    "课程号", "学号", "专业号", "姓名", "性别", "年龄",
-    "成绩", "工资", "薪资", "奖金", "津贴",
+    "学号", "姓名", "性别", "年龄", "编号",
     "张三", "李四", "王五", "赵六",
-    "张清玫", "刘逸", "李勇", "刘晨", "王敏",
     "page ", "slide ", "figure ",
 }
 

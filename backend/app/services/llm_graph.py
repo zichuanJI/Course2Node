@@ -28,22 +28,22 @@ GRAPH_SYSTEM_PROMPT = """\
 RELATES_TO 细分关系判定细则：
 - is_a：表示“是一个/属于某类/是某概念的子类型/实例化类别”。方向固定为 source=更具体的概念，target=更一般的上位概念。
   触发线索：是一个、是一种、属于、可归为、type of、kind of、belongs to。
-  示例：B+树 is_a 树索引；哈希连接 is_a 连接算法。
+  示例：B+树 is_a 树索引；牛顿法 is_a 优化算法。
 - part_of：表示“组成部分/子结构/字段/步骤/模块/阶段 属于 某整体”。方向固定为 source=部分，target=整体。
   触发线索：组成、包含于、是…的一部分、构成、子模块、步骤之一、part of、component of。
-  示例：属性 part_of 关系模式；词法分析 part_of 编译流程。
+  示例：CPU part_of 计算机系统；词法分析 part_of 编译流程。
 - prerequisite_of：表示“理解或执行 A 之前需要先有 B”。方向固定为 source=前置概念，target=后继概念。
   触发线索：前提、基础、先于、依赖、需要先、requires、depends on、prerequisite。
-  示例：函数依赖 prerequisite_of 范式分解；概率论 prerequisite_of 贝叶斯分类。
+  示例：微积分 prerequisite_of 概率论；概率论 prerequisite_of 贝叶斯分类。
 - causes：表示“因果、引起、导致、产生、带来、影响结果”。方向固定为 source=原因，target=结果。
   触发线索：导致、造成、引起、使得、产生、造成了、leads to、causes、results in。
-  示例：冲突 causes 回滚；数据倾斜 causes 查询变慢。
+  示例：通货膨胀 causes 货币贬值；数据倾斜 causes 查询变慢。
 - used_for：表示“方法/工具/模型/结构 被用于 某任务、目标、问题或场景”。方向固定为 source=手段，target=用途或任务。
   触发线索：用于、用来、适用于、负责、服务于、applied to、used for。
-  示例：BFS used_for 最短路搜索；索引 used_for 加速查询。
+  示例：BFS used_for 最短路搜索；傅里叶变换 used_for 频域分析。
 - similar_to：表示“语义接近、作用相似、可类比，但不是同义词、不是上下位、不是整体部分”。方向可视为对称，但输出时保持 source/target 任一顺序即可。
   触发线索：类似、相近、可类比、同样用于、与…相似、similar to、analogous to。
-  示例：栈 similar_to 队列（若文本明确在比较两者特性）；内连接 similar_to 等值连接（若文本明确表达近似关系）。
+  示例：栈 similar_to 队列（若文本明确在比较两者特性）；牛顿法 similar_to 梯度下降（若文本明确表达近似关系）。
 
 关系类型优先级：
 - 明确语义关系优先输出 RELATES_TO，不要退化成 CO_OCCURS_WITH。
@@ -74,15 +74,15 @@ RELATES_TO 细分关系判定细则：
 
 直接剔除（零容忍，绝对不输出为概念）：
 - 页眉页脚、目录残片、章节号、页码、表号、小结、学习目标
-- 示例数据、表格示例值、纯案例中的记录值（如"人员三""a-305""一个工资表"）
-- 人名（如张三、李四、刘晨、王敏）、学号、课程号、专业号、姓名、性别、年龄等字段型属性名
-- 只在例子里有意义的实体，即使频率高也不要保留
-- "关系数据结构及形式化定义"这类章节标题不能直接作为概念，必须拆成真正概念
-- 太泛化的通用英文词：internal, external, instance, database, record, file, system, program, function, structure, operation, model, field, node, key, value, type, set, group, level, entry, link, path 等。这些词单独出现不是概念，必须带上修饰语才有意义（如"关系数据库""B+树索引"）
+- 示例数据、表格示例值、纯案例中的记录值（如"项目A""例子1""一种特殊情况"）
+- 无学术意义的泛指人名（如张三、李四）、常见系统字段型属性名（如学号、姓名、性别、年龄、编号）
+- 只在某一个例子里有意义的具体实体，即使在该段落频率高也不要保留
+- "第一章 xxx的定义与概念"这类带有章节结构的标题不能直接作为概念，必须提取其中的核心名词
+- 太泛化的通用英文词：internal, external, instance, database, record, file, system, program, function, structure, operation, model, field, node, key, value, type, set, group, level, entry, link, path 等。这些词单独出现不是概念，必须带上修饰语才有意义（如"B+树索引"）
 - 太泛化的通用中文词：表、图、值、项、组、类、库、码、记录、字段、系统、文件、程序、操作、功能、用户、结果
-- 短缩写（如 dba, dbtg, db, os, io）除非它在本讲中有明确定义
-- 以量词或指示词开头的短语（如"一个工资表""某系统""这个表""表中有表"）——这些是句子片段，不是概念
-- 编号标识（如 a-305, a-102, a-217, dbch01, ch03）
+- 短缩写（如 os, io）除非它在本讲中有明确学术定义
+- 以量词或指示词开头的短语（如"一个模型""某系统""这个算法"）——这些是句子片段，不是概念
+- 编号标识（如 a-305, ch03, eq1）
 
 关系限制：
 - edge_type 必须是 RELATES_TO / CO_OCCURS_WITH / MENTIONS / CONTAINS 之一。
@@ -134,13 +134,11 @@ NOISE_PATTERNS = [
     re.compile(r"^(chapter|section|lecture|slide)\b", re.IGNORECASE),
     re.compile(r"^第[一二三四五六七八九十百\d]+[章节讲]$"),
     re.compile(r"^表\s*\d+(\.\d+)*$"),
-    re.compile(r"^dbch\d+$", re.IGNORECASE),
+    re.compile(r"^ch\d+$", re.IGNORECASE),
     re.compile(r"^[a-z]{1,4}[-_]\d{1,4}$", re.IGNORECASE),   # a-305, cs_101
-    re.compile(r"^[a-z]{1,2}\d*$", re.IGNORECASE),            # dba, a1, db
-    re.compile(r"^人员[一二三四五六七八九十\d]+$"),              # 人员三
-    re.compile(r"^实例[一二三四五六七八九十\d]+$"),              # 实例一
+    re.compile(r"^[a-z]{1,2}\d*$", re.IGNORECASE),            # a1, os
     re.compile(r"^(一个|一张|某个?|每个?|这个|那个)"),           # demonstrative-prefixed
-    re.compile(r"[中里]有[一二三四五六七八九十\d]"),             # 表中有表, X中有Y
+    re.compile(r"[中里]有[一二三四五六七八九十\d]"),             # X中有Y
 ]
 NOISE_SUBSTRINGS = {
     # Chinese structural / meta
@@ -150,13 +148,8 @@ NOISE_SUBSTRINGS = {
     "contents", "outline", "example", "learning objective",
     "student", "page",
     # Example data field names & person names
-    "学号", "课程号", "专业号", "姓名", "性别", "年龄",
-    "成绩", "工资", "薪资", "奖金", "津贴",
+    "学号", "姓名", "性别", "年龄", "编号",
     "张三", "李四", "王五", "赵六",
-    "张清玫", "刘逸", "李勇", "刘晨", "王敏",
-    # Institutional
-    "信息专业", "计算机专业",
-    "关系数据结构及形式化定义",
 }
 VALID_RELATION_TYPES = {item.value for item in RelationType}
 
@@ -362,14 +355,13 @@ def _build_graph_prompt(batch: list[EvidenceChunk]) -> str:
         "- 不要输出 evidence_chunk_ids、chunk_id、页码、引用或来源说明",
         "- 同义词、中英文别名请合并到同一个概念",
         "- 优先抽标题、定义句、枚举项、运算名、约束名、模型名中的核心概念",
-        "- 默认丢弃人名、学号、课程号、专业号、姓名、性别、年龄、表格示例值、页码和章节编号",
-        "- 如果一个词只是例子里的字段 or 记录值，不要输出为概念",
+        "- 默认丢弃泛指人名、常见属性名（如姓名、性别、学号、工号）、表格示例值、页码和章节编号",
+        "- 如果一个词只是为了举例而假设出的具体实体或数值，不要输出为概念",
         "- definition 必须是一句教学定义；summary/key_points 要能作为节点小笔记阅读",
         "- 对当前 batch 中出现的可教学知识点尽量完整抽取，不要因为全局数量限制丢掉有效知识点",
         "- 若当前 batch 知识点很多，优先保留有定义、操作、公式、约束、模型或方法说明的概念",
         "- 为避免输出过长，每个字符串字段尽量控制在 90 个中文字符以内",
         "- key_points 最多 3 条，tags 最多 4 个，prerequisites/applications 没有明确文本依据时返回空数组",
-        "- 关系数据库类章节的保留范式示例：关系模型、关系、域、笛卡尔积、元组、属性、候选码、主码、外码、关系模式、关系操作、选择、投影、连接、关系完整性、SQL",
         "",
         "输入文本片段:",
     ]
