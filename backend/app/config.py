@@ -64,5 +64,8 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
     bing_search_api_key: str = ""
 
+    # PDF Export
+    wkhtmltopdf_path: str = ""
+
 
 settings = Settings()

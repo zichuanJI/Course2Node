@@ -171,20 +171,20 @@ export async function deleteSession(id: string): Promise<void> {
   await readJson<{ ok: boolean }>(response);
 }
 
-export async function exportNote(sessionId: string, fmt: "markdown" | "tex" | "txt"): Promise<string> {
+export async function exportNote(sessionId: string, fmt: "markdown" | "tex" | "txt" | "pdf"): Promise<Blob> {
   const response = await fetch(`${BASE}/export/${sessionId}/${fmt}`);
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
   }
-  return response.text();
+  return response.blob();
 }
 
-export async function exportExam(sessionId: string, fmt: "markdown" | "tex" | "txt"): Promise<string> {
+export async function exportExam(sessionId: string, fmt: "markdown" | "tex" | "txt" | "pdf"): Promise<Blob> {
   const response = await fetch(`${BASE}/export/${sessionId}/exam/${fmt}`);
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
   }
-  return response.text();
+  return response.blob();
 }
 
 export async function getRuntimeSettings(): Promise<RuntimeSettingsResponse> {

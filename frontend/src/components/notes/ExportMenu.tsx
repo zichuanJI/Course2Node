@@ -24,12 +24,11 @@ export function ExportMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  async function handleExport(fmt: "markdown" | "tex" | "txt") {
+  async function handleExport(fmt: "markdown" | "tex" | "txt" | "pdf") {
     setOpen(false);
     try {
-      const content = kind === "exam" ? await exportExam(sessionId, fmt) : await exportNote(sessionId, fmt);
+      const blob = kind === "exam" ? await exportExam(sessionId, fmt) : await exportNote(sessionId, fmt);
       const ext = fmt === "markdown" ? "md" : fmt;
-      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -44,7 +43,8 @@ export function ExportMenu({
   async function handleCopy() {
     setOpen(false);
     try {
-      const content = kind === "exam" ? await exportExam(sessionId, "markdown") : await exportNote(sessionId, "markdown");
+      const blob = kind === "exam" ? await exportExam(sessionId, "markdown") : await exportNote(sessionId, "markdown");
+      const content = await blob.text();
       await navigator.clipboard.writeText(content);
       toast("已复制到剪贴板", "success");
     } catch {
@@ -59,6 +59,9 @@ export function ExportMenu({
       </Button>
       {open && (
         <div className="export-dropdown">
+          <button className="export-item" onClick={() => handleExport("pdf")}>
+            <span className="export-item-icon">📄</span> PDF 报告
+          </button>
           <button className="export-item" onClick={() => handleExport("markdown")}>
             <span className="export-item-icon">📝</span> Markdown
           </button>

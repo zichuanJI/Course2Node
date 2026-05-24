@@ -74,9 +74,9 @@ class ExportRenderer(ABC):
     """Renders a NoteDocument to a target format."""
 
     @abstractmethod
-    def render(self, note_document: dict[str, Any], fmt: str) -> str:
+    def render(self, note_document: dict[str, Any], fmt: str) -> Any:
         """
-        fmt: "markdown" | "tex" | "txt"
-        Returns rendered string.
+        fmt: "markdown" | "tex" | "txt" | "pdf"
+        Returns rendered string or bytes.
         """
         ...

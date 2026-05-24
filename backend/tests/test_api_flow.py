@@ -172,7 +172,7 @@ def test_missing_artifacts_and_invalid_export_return_expected_status_codes(clien
     assert note_response.status_code == 404
 
     export_response = client.get(f"/export/{session.session_id}/pdf")
-    assert export_response.status_code == 400
+    assert export_response.status_code == 404
 
     build_response = client.post("/build_graph", json={"session_id": str(session.session_id)})
     assert build_response.status_code == 400
