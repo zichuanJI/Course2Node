@@ -209,6 +209,33 @@ export interface ExamDocument {
   generated_at: string;
 }
 
+export interface ChatContextItem {
+  context_type: "concept" | "note_selection" | "exam_selection" | "selection" | string;
+  label: string;
+  content: string;
+  concept_id?: string | null;
+}
+
+export interface ChatMessage {
+  message_id: string;
+  role: "user" | "assistant" | string;
+  content: string;
+  context_items: ChatContextItem[];
+  created_at: string;
+}
+
+export interface ChatDocument {
+  chat_id: string;
+  session_id: string;
+  messages: ChatMessage[];
+  updated_at: string;
+}
+
+export interface ChatResponse {
+  chat: ChatDocument;
+  assistant_message: ChatMessage;
+}
+
 export interface RuntimeSettingField {
   key: string;
   label: string;

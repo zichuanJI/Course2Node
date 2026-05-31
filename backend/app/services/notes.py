@@ -71,6 +71,7 @@ NOTE_STYLE_RULES = """\
 - 当概念之间是 is_a / part_of / prerequisite_of / causes / used_for / similar_to 这类关系时，尽量在文字里把关系语义说出来，不要全部弱化成“相关”。
 - section 的正文要有信息密度，避免一句话概述后立刻结束；也不要把 definition、summary、key_points 原样逐条复制。
 - 不要出现“根据图谱”“根据资料来源”等元说明，直接写成课堂笔记。
+- 不要写引用、页码、来源、证据或 chunk_id。
 - Markdown 必须保留真实换行：加粗小标题单独一行，小标题后空一行；列表项每条单独一行。
 - content_md 中不要把多个小标题、列表项压在同一行。
 """

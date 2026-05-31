@@ -9,7 +9,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.config import settings
-from app.core.types import CourseSession, ExamDocument, GraphArtifact, IngestArtifact, NoteDocument
+from app.core.types import ChatDocument, CourseSession, ExamDocument, GraphArtifact, IngestArtifact, NoteDocument
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -179,6 +179,22 @@ def load_exam(session_id: uuid.UUID) -> ExamDocument:
 
 def delete_exam(session_id: uuid.UUID) -> None:
     exam_path(session_id).unlink(missing_ok=True)
+
+
+def chat_path(session_id: uuid.UUID) -> Path:
+    return session_dir(session_id) / "chat.json"
+
+
+def save_chat(chat: ChatDocument) -> Path:
+    return _write_model(chat_path(chat.session_id), chat)
+
+
+def load_chat(session_id: uuid.UUID) -> ChatDocument:
+    return _read_model(chat_path(session_id), ChatDocument)
+
+
+def delete_chat(session_id: uuid.UUID) -> None:
+    chat_path(session_id).unlink(missing_ok=True)
 
 
 def write_json(path: Path, data: dict) -> Path:

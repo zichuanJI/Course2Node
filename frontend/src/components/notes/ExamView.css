@@ -289,7 +289,8 @@
 }
 
 .exam-answer-toggle,
-.exam-submit-answer {
+.exam-submit-answer,
+.exam-ask-question {
   border: 1px dashed var(--rule-strong);
   border-radius: var(--radius-sm);
   padding: 11px 12px;
@@ -302,6 +303,17 @@
 .exam-submit-answer {
   border-style: solid;
   background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.exam-ask-question {
+  border-style: solid;
+  color: var(--ink-2);
+  background: var(--panel-2);
+}
+
+.exam-ask-question:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .exam-grade {

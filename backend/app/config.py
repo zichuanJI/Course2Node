@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     exam_llm_model: str = "deepseek-v4-pro"
     exam_llm_timeout_seconds: float = 180.0
     exam_llm_max_output_tokens: int = 10000
+    chat_llm_base_url: str = ""
+    chat_llm_api_key: str = ""
+    chat_llm_model: str = ""
+    chat_llm_timeout_seconds: float = 120.0
+    chat_llm_max_output_tokens: int = 4000
     kimi_base_url: str = "https://api.moonshot.cn/v1"
     kimi_api_key: str = ""
     kimi_model: str = "kimi-k2.6"

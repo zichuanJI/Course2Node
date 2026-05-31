@@ -81,6 +81,26 @@ class OpenAICompatibleLLMProvider:
         content = _coerce_text(response.choices[0].message.content)
         return _parse_json_text(content)
 
+    def generate_text(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        system: str = "",
+        temperature: float = 0.25,
+        max_output_tokens: int | None = None,
+    ) -> str:
+        request_messages: list[dict[str, str]] = []
+        if system:
+            request_messages.append({"role": "system", "content": system})
+        request_messages.extend(messages)
+        response = self._client.chat.completions.create(
+            model=self.model,
+            temperature=temperature,
+            max_tokens=max_output_tokens or self.max_output_tokens,
+            messages=request_messages,
+        )
+        return _coerce_text(response.choices[0].message.content).strip()
+
     def generate_json_from_images(
         self,
         *,

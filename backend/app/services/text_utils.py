@@ -120,7 +120,8 @@ _JUNK_PATTERNS = [
 # Substrings that make a concept name look like example data or a fragment
 _JUNK_SUBSTRINGS = {
     "学号", "姓名", "性别", "年龄", "编号",
-    "张三", "李四", "王五", "赵六",
+    "张三", "李四", "王五", "赵六", "张清玫",
+    "关系数据结构及形式化定义",
     "page ", "slide ", "figure ",
 }
 

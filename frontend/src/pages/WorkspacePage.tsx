@@ -2,13 +2,14 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
 import { generateExam, getExam, getNote, getGraph, getSession } from "../api/client";
+import { ChatView } from "../components/chat/ChatView";
 import { ExamView } from "../components/notes/ExamView";
 import { NoteView } from "../components/notes/NoteView";
 import { useToast } from "../components/primitives/Toast";
 import { SearchPanel } from "../components/search/SearchPanel";
 import { ConceptDrawer } from "../components/graph/ConceptDrawer";
 import { Skeleton } from "../components/primitives/Skeleton";
-import type { CourseSession, ExamDocument, GraphArtifact, NoteDocument, CourseGraphMeta } from "../types";
+import type { ChatContextItem, CourseSession, ExamDocument, GraphArtifact, NoteDocument, CourseGraphMeta } from "../types";
 import "./WorkspacePage.css";
 
 const ConceptGraph = lazy(() =>
@@ -33,9 +34,10 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
   const [session, setSession] = useState<CourseSession | null>(null);
   const [searchCollapsed, setSearchCollapsed] = useState(false);
   const [notesCollapsed, setNotesCollapsed] = useState(false);
-  const [rightTool, setRightTool] = useState<"notes" | "exam">("notes");
+  const [rightTool, setRightTool] = useState<"chat" | "notes" | "exam">("chat");
   const [drillCoreId, setDrillCoreId] = useState<string | null>(null);
   const [drawerCollapsed, setDrawerCollapsed] = useState(false);
+  const [pendingChatContext, setPendingChatContext] = useState<ChatContextItem | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -91,6 +93,12 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
     } finally {
       setExamGenerating(false);
     }
+  }
+
+  function handleAskContext(context: ChatContextItem) {
+    setPendingChatContext(context);
+    setRightTool("chat");
+    setNotesCollapsed(false);
   }
 
   return (
@@ -301,6 +309,15 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
             <div className="ws-head">
               <div className="ws-tool-tabs" role="tablist" aria-label="学习工具">
                 <button
+                  className={clsx("ws-tool-tab", rightTool === "chat" && "ws-tool-tab-active")}
+                  onClick={() => setRightTool("chat")}
+                  type="button"
+                  role="tab"
+                  aria-selected={rightTool === "chat"}
+                >
+                  对话
+                </button>
+                <button
                   className={clsx("ws-tool-tab", rightTool === "notes" && "ws-tool-tab-active")}
                   onClick={() => setRightTool("notes")}
                   type="button"
@@ -332,14 +349,27 @@ export function WorkspacePage({ graphStyle = "force" }: WorkspacePageProps) {
               </button>
             </div>
             <div className="ws-notes-body">
-              {rightTool === "notes" ? (
-                <NoteView sessionId={id} initialNote={note} onNoteChange={setNote} />
+              {rightTool === "chat" ? (
+                <ChatView
+                  sessionId={id}
+                  selectedConcept={selectedConcept}
+                  pendingContext={pendingChatContext}
+                  onContextConsumed={() => setPendingChatContext(null)}
+                />
+              ) : rightTool === "notes" ? (
+                <NoteView
+                  sessionId={id}
+                  initialNote={note}
+                  onNoteChange={setNote}
+                  onAskSelection={handleAskContext}
+                />
               ) : (
                 <ExamView
                   sessionId={id}
                   exam={exam}
                   generating={examGenerating}
                   onGenerate={handleGenerateExam}
+                  onAskSelection={handleAskContext}
                 />
               )}
             </div>

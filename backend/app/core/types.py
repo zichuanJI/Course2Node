@@ -260,6 +260,28 @@ class ExamDocument(BaseModel):
     generated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ChatContextItem(BaseModel):
+    context_type: str
+    label: str = ""
+    content: str = ""
+    concept_id: str | None = None
+
+
+class ChatMessage(BaseModel):
+    message_id: str = Field(default_factory=lambda: str(uuid4()))
+    role: str
+    content: str
+    context_items: list[ChatContextItem] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ChatDocument(BaseModel):
+    chat_id: str = Field(default_factory=lambda: str(uuid4()))
+    session_id: UUID
+    messages: list[ChatMessage] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class UploadResponse(BaseModel):
     session_id: UUID
     source_id: UUID
@@ -298,6 +320,17 @@ class GenerateExamRequest(BaseModel):
     session_id: UUID
     question_count: int = Field(default=10, ge=4, le=30)
     question_types: list[str] = Field(default_factory=list)
+
+
+class ChatRequest(BaseModel):
+    session_id: UUID
+    message: str = Field(min_length=1, max_length=8000)
+    context_items: list[ChatContextItem] = Field(default_factory=list)
+
+
+class ChatResponse(BaseModel):
+    chat: ChatDocument
+    assistant_message: ChatMessage
 
 
 class RuntimeSettingField(BaseModel):

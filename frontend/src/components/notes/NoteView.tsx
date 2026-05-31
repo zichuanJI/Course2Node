@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { NoteDocument } from "../../types";
+import { useEffect, useState, type SyntheticEvent } from "react";
+import type { ChatContextItem, NoteDocument } from "../../types";
 import { generateNotes, getNote } from "../../api/client";
 import { Markdown } from "./Markdown";
 import { ExportMenu } from "./ExportMenu";
@@ -11,13 +11,16 @@ export function NoteView({
   sessionId,
   initialNote,
   onNoteChange,
+  onAskSelection,
 }: {
   sessionId: string;
   initialNote: NoteDocument | null;
   onNoteChange?: (note: NoteDocument) => void;
+  onAskSelection?: (context: ChatContextItem) => void;
 }) {
   const [note, setNote] = useState<NoteDocument | null>(initialNote);
   const [generating, setGenerating] = useState(false);
+  const [selectedText, setSelectedText] = useState("");
   const toast = useToast();
 
   useEffect(() => {
@@ -38,6 +41,23 @@ export function NoteView({
     }
   }
 
+  function captureSelection(event: SyntheticEvent) {
+    if ((event.target as HTMLElement).closest("button")) return;
+    const selection = window.getSelection();
+    const text = selection?.toString().trim() ?? "";
+    setSelectedText(text.length >= 2 ? text.slice(0, 2200) : "");
+  }
+
+  function askSelection() {
+    if (!selectedText) return;
+    onAskSelection?.({
+      context_type: "note_selection",
+      label: "笔记选区",
+      content: selectedText,
+    });
+    setSelectedText("");
+  }
+
   if (!note) {
     return (
       <div className="note-generate">
@@ -53,13 +73,18 @@ export function NoteView({
   }
 
   return (
-    <div className="note-view">
+    <div className="note-view" onMouseUp={captureSelection} onKeyUp={captureSelection}>
       <div className="note-view-header">
         <div>
           <h2 className="note-view-title">{note.title}</h2>
           <p className="note-view-subtitle">由当前知识图谱生成</p>
         </div>
         <div className="note-view-actions">
+          {selectedText && onAskSelection && (
+            <Button variant="ghost" size="sm" onClick={askSelection}>
+              询问选区
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={handleGenerate} loading={generating}>
             重新生成
           </Button>

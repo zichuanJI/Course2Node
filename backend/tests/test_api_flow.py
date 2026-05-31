@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.core.types import CourseSession, EvidenceChunk, SourceKind
-from app.storage.local import save_session
+from app.core.types import ConceptNode, CourseSession, EvidenceChunk, GraphArtifact, SourceKind
+from app.storage.local import save_graph_artifact, save_session
 
 
 def test_pdf_api_flow_and_reupload_invalidates_stale_graph_and_notes(client, monkeypatch):
@@ -177,3 +177,60 @@ def test_missing_artifacts_and_invalid_export_return_expected_status_codes(clien
     build_response = client.post("/build_graph", json={"session_id": str(session.session_id)})
     assert build_response.status_code == 400
     assert "No ingest artifacts found" in build_response.text
+
+
+def test_chat_api_persists_context_and_exports_markdown(client, monkeypatch):
+    import app.services.chat as chat_module
+
+    session = CourseSession(course_title="DB", lecture_title="SQL")
+    save_session(session)
+    concept = ConceptNode(
+        concept_id="concept:sql",
+        name="SQL",
+        canonical_name="sql",
+        definition="SQL 是关系数据库查询语言。",
+        summary="SQL 用于定义、查询和管理关系数据。",
+        key_points=["SELECT 用于查询", "WHERE 用于过滤"],
+        importance_score=0.9,
+    )
+    save_graph_artifact(GraphArtifact(session_id=session.session_id, concepts=[concept]))
+
+    class FakeProvider:
+        def generate_text(self, *, messages, system="", temperature=0.25, max_output_tokens=None):
+            assert "SQL" in system
+            assert messages[-1]["role"] == "user"
+            assert "知识点：SQL" in messages[-1]["content"]
+            return "SQL 的核心是用声明式方式表达数据查询。"
+
+    monkeypatch.setattr(chat_module, "_chat_provider", lambda: FakeProvider())
+
+    response = client.post(
+        "/chat/message",
+        json={
+            "session_id": str(session.session_id),
+            "message": "解释这个知识点",
+            "context_items": [
+                {
+                    "context_type": "concept",
+                    "label": "知识点：SQL",
+                    "content": "定义：SQL 是关系数据库查询语言。",
+                    "concept_id": "concept:sql",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["assistant_message"]["content"] == "SQL 的核心是用声明式方式表达数据查询。"
+    assert len(payload["chat"]["messages"]) == 2
+
+    stored_response = client.get(f"/chat/{session.session_id}")
+    assert stored_response.status_code == 200
+    assert len(stored_response.json()["messages"]) == 2
+
+    export_response = client.get(f"/export/{session.session_id}/chat/markdown")
+    assert export_response.status_code == 200
+    assert "# SQL - 对话记录" in export_response.text
+    assert "知识点：SQL" in export_response.text
+    assert "SQL 的核心" in export_response.text

@@ -1,5 +1,8 @@
 import type {
   CourseSession,
+  ChatContextItem,
+  ChatDocument,
+  ChatResponse,
   ExamDocument,
   NoteDocument,
   GraphArtifact,
@@ -166,6 +169,25 @@ export async function getExam(sessionId: string): Promise<ExamDocument> {
   return readJson<ExamDocument>(response);
 }
 
+export async function getChat(sessionId: string): Promise<ChatDocument> {
+  const response = await fetch(`${BASE}/chat/${sessionId}`);
+  return readJson<ChatDocument>(response);
+}
+
+export async function sendChatMessage(payload: { session_id: string; message: string; context_items?: ChatContextItem[] }) {
+  const response = await fetch(`${BASE}/chat/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return readJson<ChatResponse>(response);
+}
+
+export async function clearChat(sessionId: string): Promise<ChatDocument> {
+  const response = await fetch(`${BASE}/chat/${sessionId}`, { method: "DELETE" });
+  return readJson<ChatDocument>(response);
+}
+
 export async function deleteSession(id: string): Promise<void> {
   const response = await fetch(`${BASE}/sessions/${id}`, { method: "DELETE" });
   await readJson<{ ok: boolean }>(response);
@@ -181,6 +203,14 @@ export async function exportNote(sessionId: string, fmt: "markdown" | "tex" | "t
 
 export async function exportExam(sessionId: string, fmt: "markdown" | "tex" | "txt" | "pdf"): Promise<Blob> {
   const response = await fetch(`${BASE}/export/${sessionId}/exam/${fmt}`);
+  if (!response.ok) {
+    throw new ApiError(response.status, await response.text());
+  }
+  return response.blob();
+}
+
+export async function exportChat(sessionId: string): Promise<Blob> {
+  const response = await fetch(`${BASE}/export/${sessionId}/chat/markdown`);
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
   }

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { ExamDocument, ExamQuestion, ExamQuestionType } from "../../types";
+import { useState, type SyntheticEvent } from "react";
+import type { ChatContextItem, ExamDocument, ExamQuestion, ExamQuestionType } from "../../types";
 import { Button } from "../primitives/Button";
 import { ExportMenu } from "./ExportMenu";
 import "./ExamView.css";
@@ -33,14 +33,17 @@ export function ExamView({
   exam,
   generating,
   onGenerate,
+  onAskSelection,
 }: {
   sessionId: string;
   exam: ExamDocument | null;
   generating: boolean;
   onGenerate: (questionTypes: string[], questionCount: number) => Promise<void> | void;
+  onAskSelection?: (context: ChatContextItem) => void;
 }) {
   const [openAnswers, setOpenAnswers] = useState<Record<string, boolean>>({});
   const [questionCount, setQuestionCount] = useState(10);
+  const [selectedText, setSelectedText] = useState("");
   const [selectedTypes, setSelectedTypes] = useState<ExamQuestionType[]>([
     "single_choice",
     "multiple_choice",
@@ -63,6 +66,31 @@ export function ExamView({
     setOpenAnswers({});
   }
 
+  function captureSelection(event: SyntheticEvent) {
+    if ((event.target as HTMLElement).closest("button")) return;
+    const selection = window.getSelection();
+    const text = selection?.toString().trim() ?? "";
+    setSelectedText(text.length >= 2 ? text.slice(0, 2200) : "");
+  }
+
+  function askSelection() {
+    if (!selectedText) return;
+    onAskSelection?.({
+      context_type: "exam_selection",
+      label: "试卷选区",
+      content: selectedText,
+    });
+    setSelectedText("");
+  }
+
+  function askQuestion(question: ExamQuestion, index: number) {
+    onAskSelection?.({
+      context_type: "exam_selection",
+      label: `试卷题目：第 ${index + 1} 题`,
+      content: formatQuestionContext(question, index),
+    });
+  }
+
   if (!exam) {
     return (
       <GeneratePanel
@@ -79,13 +107,18 @@ export function ExamView({
   const stats = getExamStats(exam.questions);
 
   return (
-    <div className="exam-view">
+    <div className="exam-view" onMouseUp={captureSelection} onKeyUp={captureSelection}>
       <div className="exam-view-header">
         <div>
           <h2 className="exam-view-title">{exam.title}</h2>
           <p className="exam-view-subtitle">由当前知识图谱和重要度指标生成</p>
         </div>
         <div className="exam-view-actions">
+          {selectedText && onAskSelection && (
+            <Button variant="ghost" size="sm" onClick={askSelection}>
+              询问选区
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={handleGenerate} loading={generating}>
             重新生成
           </Button>
@@ -119,6 +152,7 @@ export function ExamView({
             question={question}
             index={index}
             answerOpen={Boolean(openAnswers[question.question_id])}
+            onAskQuestion={onAskSelection ? () => askQuestion(question, index) : undefined}
             onToggleAnswer={() =>
               setOpenAnswers((current) => ({
                 ...current,
@@ -195,11 +229,13 @@ function QuestionCard({
   question,
   index,
   answerOpen,
+  onAskQuestion,
   onToggleAnswer,
 }: {
   question: ExamQuestion;
   index: number;
   answerOpen: boolean;
+  onAskQuestion?: () => void;
   onToggleAnswer: () => void;
 }) {
   const [singleAnswer, setSingleAnswer] = useState("");
@@ -312,6 +348,11 @@ function QuestionCard({
       )}
 
       <div className="exam-question-actions">
+        {onAskQuestion && (
+          <button className="exam-ask-question" type="button" onClick={onAskQuestion}>
+            询问这题
+          </button>
+        )}
         {gradable && (
           <button className="exam-submit-answer" type="button" onClick={() => setSubmitted(true)}>
             提交判断
@@ -345,6 +386,32 @@ function getExamStats(questions: ExamQuestion[]) {
     objective: questions.filter((question) => isGradable(question.question_type)).length,
     subjective: questions.filter((question) => !isGradable(question.question_type)).length,
   };
+}
+
+function formatQuestionContext(question: ExamQuestion, index: number) {
+  const lines = [
+    `第 ${index + 1} 题`,
+    `题型：${QUESTION_TYPE_LABEL[question.question_type] ?? question.question_type}`,
+    `难度：${DIFFICULTY_LABEL[question.difficulty] ?? question.difficulty}`,
+    `题干：${question.stem}`,
+  ];
+  if (question.choices.length > 0) {
+    lines.push("选项：");
+    question.choices.forEach((choice) => lines.push(`${choice.choice_id}. ${choice.text}`));
+  }
+  if (question.tested_points.length > 0) {
+    lines.push(`考察点：${question.tested_points.join("；")}`);
+  }
+  if (question.importance_basis) {
+    lines.push(`重要度依据：${question.importance_basis}`);
+  }
+  if (question.answer) {
+    lines.push(`参考答案：${question.answer}`);
+  }
+  if (question.explanation) {
+    lines.push(`解析：${question.explanation}`);
+  }
+  return lines.join("\n");
 }
 
 function isGradable(questionType: string) {
