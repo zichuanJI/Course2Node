@@ -65,6 +65,77 @@ function StatusChip({ status }: { status: SessionStatus }) {
 // ── Status filter groups ──────────────────────────────────────────────────────
 type FilterGroup = "all" | "ready" | "processing" | "failed";
 
+type SettingsGroupDefinition = {
+  id: string;
+  title: string;
+  description: string;
+  badge: string;
+  defaultOpen: boolean;
+  keys: string[];
+};
+
+type OrderedSettingsGroup = SettingsGroupDefinition & {
+  fields: RuntimeSettingField[];
+};
+
+const SETTINGS_GROUP_DEFINITIONS: SettingsGroupDefinition[] = [
+  {
+    id: "kimi-pdf",
+    title: "解析",
+    description: "PDF 解析链路使用，影响课件上传后的文本提取质量。",
+    badge: "核心",
+    defaultOpen: false,
+    keys: ["KIMI_BASE_URL", "KIMI_API_KEY", "KIMI_MODEL"],
+  },
+  {
+    id: "embedding",
+    title: "Embedding",
+    description: "检索和概念匹配使用；本地模型优先，云端参数按需填写。",
+    badge: "核心",
+    defaultOpen: false,
+    keys: [
+      "EMBED_PROVIDER",
+      "EMBEDDING_LOCAL_MODEL_NAME",
+      "EMBEDDING_BASE_URL",
+      "EMBEDDING_API_KEY",
+      "EMBEDDING_MODEL",
+      "OPENAI_API_KEY",
+    ],
+  },
+  {
+    id: "graph-llm",
+    title: "图谱/笔记 LLM",
+    description: "知识图谱、笔记生成和默认模型回退链路使用。",
+    badge: "核心",
+    defaultOpen: false,
+    keys: ["GRAPH_LLM_BASE_URL", "GRAPH_LLM_API_KEY", "GRAPH_LLM_MODEL"],
+  },
+  {
+    id: "chat-llm",
+    title: "对话 LLM",
+    description: "额外功能：直接对话和题目追问使用；未单独配置时会回退到图谱/笔记 LLM。",
+    badge: "额外功能",
+    defaultOpen: false,
+    keys: ["CHAT_LLM_BASE_URL", "CHAT_LLM_API_KEY", "CHAT_LLM_MODEL"],
+  },
+  {
+    id: "exam-llm",
+    title: "出卷 LLM",
+    description: "额外功能：只在需要单独控制出卷模型时填写。",
+    badge: "额外功能",
+    defaultOpen: false,
+    keys: ["EXAM_LLM_BASE_URL", "EXAM_LLM_API_KEY", "EXAM_LLM_MODEL"],
+  },
+  {
+    id: "audio-asr",
+    title: "音频 ASR",
+    description: "额外功能：只在解析音频或视频转写时使用。",
+    badge: "额外功能",
+    defaultOpen: false,
+    keys: ["WHISPER_MODEL_SIZE", "WHISPER_LANGUAGE", "FASTER_WHISPER_PYTHON_PATH"],
+  },
+];
+
 function matchFilter(status: SessionStatus, filter: FilterGroup): boolean {
   if (filter === "all") return true;
   if (filter === "ready") return status === "notes_ready" || status === "graph_ready";
@@ -118,6 +189,7 @@ function DeploymentSettingsModal({
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const toast = useToast();
 
   useEffect(() => {
@@ -157,7 +229,23 @@ function DeploymentSettingsModal({
     }
   }
 
-  const groups = useMemo(() => groupSettings(settingsPayload?.fields ?? []), [settingsPayload]);
+  const groups = useMemo(() => buildSettingsGroups(settingsPayload?.fields ?? []), [settingsPayload]);
+
+  useEffect(() => {
+    if (groups.length === 0) return;
+    setOpenGroups((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const group of groups) {
+        if (!(group.id in next)) {
+          next[group.id] = group.defaultOpen;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [groups]);
+
   const whisperModel = draft.WHISPER_MODEL_SIZE || "base";
   const whisperCommand = `python -c "import whisper; whisper.load_model('${whisperModel}')"`;
   const fasterWhisperCommand = `python -c "from faster_whisper import WhisperModel; WhisperModel('${whisperModel}')"`;
@@ -184,54 +272,79 @@ function DeploymentSettingsModal({
               <div className="settings-warning" key={warning}>{warning}</div>
             ))}
 
-            <div className="settings-grid">
-              {groups.map(([group, fields]) => (
-                <section className="settings-card" key={group}>
-                  <h3>{group}</h3>
-                  <div className="settings-fields">
-                    {fields.map((field) => (
-                      <label className="settings-field" key={field.key}>
-                        <span>
-                          {field.label}
-                          {field.secret && field.configured && <em>已配置</em>}
-                          {field.help_url && (
-                            <a href={field.help_url} target="_blank" rel="noreferrer">
-                              获取/文档
-                            </a>
-                          )}
-                        </span>
-                        <input
-                          type={field.secret ? "password" : "text"}
-                          value={draft[field.key] ?? ""}
-                          placeholder={field.secret && field.configured ? "留空则不修改当前密钥" : field.placeholder}
-                          onChange={(event) => setDraft((current) => ({ ...current, [field.key]: event.target.value }))}
-                          autoComplete="off"
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
+            <div className="settings-list">
+              {groups.map((group) => {
+                const isOpen = openGroups[group.id] ?? group.defaultOpen;
+                const contentId = `settings-group-${group.id}`;
 
-            <section className="settings-card settings-download-card">
-              <h3>Whisper / faster-whisper 模型入口</h3>
-              <p>
-                本项目不会从网页端触发模型下载。首次音频解析前，可以打开模型页或在后端环境运行预热命令。
-              </p>
-              <div className="settings-link-row">
-                <a href="https://huggingface.co/openai/whisper-base" target="_blank" rel="noreferrer">OpenAI Whisper 模型</a>
-                <a href="https://huggingface.co/collections/Systran/faster-whisper" target="_blank" rel="noreferrer">Systran faster-whisper 模型</a>
-              </div>
-              <div className="settings-command-list">
-                <button type="button" onClick={() => copyCommand(whisperCommand)}>
-                  <code>{whisperCommand}</code>
-                </button>
-                <button type="button" onClick={() => copyCommand(fasterWhisperCommand)}>
-                  <code>{fasterWhisperCommand}</code>
-                </button>
-              </div>
-            </section>
+                return (
+                  <section className={clsx("settings-group", isOpen && "is-open")} key={group.id}>
+                    <button
+                      className="settings-group-toggle"
+                      type="button"
+                      onClick={() => setOpenGroups((current) => ({ ...current, [group.id]: !isOpen }))}
+                      aria-expanded={isOpen}
+                      aria-controls={contentId}
+                    >
+                      <span className="settings-group-caret" aria-hidden="true" />
+                      <span className="settings-group-copy">
+                        <span className="settings-group-title">
+                          {group.title}
+                          <em>{group.badge}</em>
+                        </span>
+                        <span className="settings-group-description">{group.description}</span>
+                      </span>
+                      <span className="settings-group-count">{group.fields.length} 项</span>
+                    </button>
+
+                    {isOpen && (
+                      <div className="settings-row-list" id={contentId}>
+                        {group.fields.map((field) => (
+                          <label className="settings-row" key={field.key}>
+                            <span className="settings-row-copy">
+                              <span className="settings-row-title">
+                                {field.label}
+                                {field.secret && field.configured && <em>已配置</em>}
+                                {field.help_url && (
+                                  <a href={field.help_url} target="_blank" rel="noreferrer">
+                                    文档
+                                  </a>
+                                )}
+                              </span>
+                              <span className="settings-row-key">{field.key}</span>
+                            </span>
+                            <input
+                              type={field.secret ? "password" : "text"}
+                              value={draft[field.key] ?? ""}
+                              placeholder={field.secret && field.configured ? "留空则不修改当前密钥" : field.placeholder}
+                              onChange={(event) => setDraft((current) => ({ ...current, [field.key]: event.target.value }))}
+                              autoComplete="off"
+                            />
+                          </label>
+                        ))}
+
+                        {group.id === "audio-asr" && (
+                          <div className="settings-extra-tools">
+                            <div className="settings-link-row">
+                              <a href="https://huggingface.co/openai/whisper-base" target="_blank" rel="noreferrer">OpenAI Whisper 模型</a>
+                              <a href="https://huggingface.co/collections/Systran/faster-whisper" target="_blank" rel="noreferrer">Systran faster-whisper 模型</a>
+                            </div>
+                            <div className="settings-command-list">
+                              <button type="button" onClick={() => copyCommand(whisperCommand)}>
+                                <code>{whisperCommand}</code>
+                              </button>
+                              <button type="button" onClick={() => copyCommand(fasterWhisperCommand)}>
+                                <code>{fasterWhisperCommand}</code>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
 
             <div className="settings-actions">
               <button className="btn btn-outline btn-sm" type="button" onClick={onClose} disabled={saving}>
@@ -248,14 +361,40 @@ function DeploymentSettingsModal({
   );
 }
 
-function groupSettings(fields: RuntimeSettingField[]) {
-  const map = new Map<string, RuntimeSettingField[]>();
+function buildSettingsGroups(fields: RuntimeSettingField[]): OrderedSettingsGroup[] {
+  const fieldsByKey = new Map(fields.map((field) => [field.key, field]));
+  const usedKeys = new Set<string>();
+  const orderedGroups = SETTINGS_GROUP_DEFINITIONS.map((definition) => {
+    const groupFields = definition.keys.flatMap((key) => {
+      const field = fieldsByKey.get(key);
+      if (!field) return [];
+      usedKeys.add(key);
+      return [field];
+    });
+    return { ...definition, fields: groupFields };
+  }).filter((group) => group.fields.length > 0);
+
+  const leftoverGroups = new Map<string, RuntimeSettingField[]>();
   for (const field of fields) {
-    const group = map.get(field.group) ?? [];
+    if (usedKeys.has(field.key)) continue;
+    const group = leftoverGroups.get(field.group) ?? [];
     group.push(field);
-    map.set(field.group, group);
+    leftoverGroups.set(field.group, group);
   }
-  return Array.from(map.entries());
+
+  for (const [groupName, groupFields] of leftoverGroups) {
+    orderedGroups.push({
+      id: `other-${groupName}`,
+      title: groupName,
+      description: "补充配置项。",
+      badge: "补充",
+      defaultOpen: false,
+      keys: groupFields.map((field) => field.key),
+      fields: groupFields,
+    });
+  }
+
+  return orderedGroups;
 }
 
 // ── CourseGraphButtons ────────────────────────────────────────────────────────

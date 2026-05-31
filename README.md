@@ -133,7 +133,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip setuptools wheel -i https://mirrors.aliyun.com/pypi/simple/
 pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app --reload-dir tests
 ```
 
 **🪟 Windows PowerShell**
@@ -143,8 +143,10 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip wheel packaging "setuptools==69.5.1" -i https://mirrors.aliyun.com/pypi/simple/
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt --no-build-isolation -i https://mirrors.aliyun.com/pypi/simple/
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app --reload-dir tests
 ```
+
+如果开发时机器明显发热，优先确认后端不是用裸 `--reload` 启动。限制 `--reload-dir` 可以避免 reload 轮询扫描 `.venv`。
 
 ### 3. 启动前端 (Frontend)
 

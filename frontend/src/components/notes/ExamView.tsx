@@ -254,10 +254,17 @@ function QuestionCard({
 
   return (
     <article className="exam-question-card">
-      <div className="exam-question-meta">
-        <span>第 {index + 1} 题</span>
-        <span>{QUESTION_TYPE_LABEL[question.question_type] ?? question.question_type}</span>
-        <span>{DIFFICULTY_LABEL[question.difficulty] ?? question.difficulty}</span>
+      <div className="exam-question-head">
+        <div className="exam-question-meta">
+          <span>第 {index + 1} 题</span>
+          <span>{QUESTION_TYPE_LABEL[question.question_type] ?? question.question_type}</span>
+          <span>{DIFFICULTY_LABEL[question.difficulty] ?? question.difficulty}</span>
+        </div>
+        {onAskQuestion && (
+          <button className="exam-ask-question" type="button" onClick={onAskQuestion}>
+            询问这题
+          </button>
+        )}
       </div>
       <h3 className="exam-question-stem">{question.stem}</h3>
 
@@ -348,11 +355,6 @@ function QuestionCard({
       )}
 
       <div className="exam-question-actions">
-        {onAskQuestion && (
-          <button className="exam-ask-question" type="button" onClick={onAskQuestion}>
-            询问这题
-          </button>
-        )}
         {gradable && (
           <button className="exam-submit-answer" type="button" onClick={() => setSubmitted(true)}>
             提交判断
