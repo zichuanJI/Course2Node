@@ -174,14 +174,46 @@ npx vite --host 127.0.0.1 --port 5173
 
 ## 🐳 使用 Docker 一键部署
 
-对于希望保持环境整洁的用户，或进行线上部署演示，可以直接使用 Docker Compose。
+对于希望保持环境整洁的用户，可以直接使用 Docker Compose 启动与本机前后端开发启动等价的服务：
 
-*(请确保 `.env` 中 `LOCAL_STORAGE_PATH` 被设为了 `/artifacts`)*
+1. 准备环境变量，并填入你的 API Key：
+
+**macOS / Linux**
+```bash
+cp .env.example .env
+mkdir -p artifacts
+```
+
+**Windows PowerShell**
+```powershell
+Copy-Item .env.example .env
+New-Item -ItemType Directory -Force artifacts | Out-Null
+```
+
+2. 启动容器：
 
 ```bash
 docker compose up --build
 ```
-启动后同样访问 `http://127.0.0.1:5173` 即可。
+
+启动后访问：
+- 前端：`http://127.0.0.1:5173`
+- 后端健康检查：`http://127.0.0.1:8000/health`
+- 后端 API 文档：`http://127.0.0.1:8000/docs`
+
+Docker Compose 会自动把后端的 `LOCAL_STORAGE_PATH` 设为 `/artifacts`，并将宿主机 `./artifacts` 挂载到容器中；不用手动修改 `.env` 里的本地开发路径。根目录 `.env` 会同时挂载到后端容器的 `/app/.env`，因此页面里的“部署设置”写入后，重启容器仍会保留。
+
+首次使用本地 `bge_m3` / `Whisper` 时会下载模型。Compose 已配置 `model-cache` 卷保存 HuggingFace 和模型缓存，后续重启不会重复下载；如果需要彻底清理模型缓存，可以执行：
+
+```bash
+docker compose down -v
+```
+
+如果只想停止服务并保留数据和模型缓存：
+
+```bash
+docker compose down
+```
 
 ---
 
